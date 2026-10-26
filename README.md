@@ -2,9 +2,10 @@
 
 Review KiCad schematics and boards **together with a coding agent** (Claude Code, Codex, …) on a local web page.
 
-- **Schematic diff** (`/sch`): the changes from version A to version B (two folders, or git tags / commits) are listed
-  and pointed at with arrows on the sheets: parts added / removed, values and fields, pin connections, labels, nets,
-  sheets, re-annotation. Without B, every part of one design is listed. Side by side, overlay or flip view.
+- **Schematic review** (`/sch`): review one design (every part listed), or the changes from version A to version B
+  (two folders, or git tags / commits), pointed at with arrows on the sheets: parts added / removed, values and
+  fields, pin connections, labels, nets, sheets, re-annotation. To compare, view them side by side, overlaid or
+  flipped.
 - **Board review** (`/board`): items the agent leaves after routing or reviewing a board (what it changed, what a
   person should fix in KiCad, questions) are marked on the board in KiCad's colours, layer by layer, with severity,
   owner and the pins they point at. Click the board to ask about any spot.
@@ -31,6 +32,9 @@ Review KiCad schematics and boards **together with a coding agent** (Claude Code
 > The Japanese values of earlier versions (`修正済み`, `修正を依頼`, `このまま`, `必須`, `推奨`, `任意`, `情報`, `人`,
 > `エージェント`, `未定`, …) are still accepted everywhere and read as these codes. The full reference is in
 > [README.ja.md](README.ja.md).
+
+Where it fits in a whole design, from circuit to order: [an example workflow](docs/workflow.md) (with pre-order
+criteria the author uses).
 
 ## Requirements
 
