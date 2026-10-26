@@ -92,7 +92,7 @@ a { color: var(--sub); }
 .stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; isolation: isolate; background: #fff; }
 .stage .layer { position: absolute; inset: 0; background: #fff; }
 .stage img, .stage svg.marks { position: absolute; left: 0; top: 0; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
-.stage img.ghost { opacity: .28; }            /* overlay: A in light red under B */
+.stage img.ghost { opacity: .6; }             /* overlay: A in red under B */
 svg.marks { pointer-events: none; overflow: visible; }
 svg.marks rect { fill: none; vector-effect: non-scaling-stroke; }
 svg.marks rect.sub { stroke: none; fill: rgba(43,111,214,0); }
@@ -602,7 +602,7 @@ function renderPanes() {
     entry(ST_DRAW.fixed, '→' + BTN_LABEL.fixed), entry(ST_DRAW.question, '→' + ST_LINE.question), entry(css('--info'), t('legend.picked'))].join(gap);
   const shownKey = (S.show_diff ? key + gap : '') + marks + gap + esc(t('legend.ask'));
   $('legend').innerHTML = S.single ? esc(t('legend.single'))
-    : mode === 'overlay' ? entry('#e8a0a0', t('legend.ghost')) + esc(t('legend.ghost.top')) + gap + shownKey : shownKey;
+    : mode === 'overlay' ? entry('#e88080', t('legend.ghost')) + esc(t('legend.ghost.top')) + gap + shownKey : shownKey;
   applyFlip();
   drawMarks();
   applyView();
