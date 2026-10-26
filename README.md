@@ -11,6 +11,10 @@ Review KiCad schematics and boards **together with a coding agent** (Claude Code
 - Every item has a status (✔ fixed / ⚑ please fix / ✓ OK) and a comment thread. When you write, the agent that is
   waiting wakes up and its reply appears in place.
 
+![Demo: a schematic change discussed with the agent and approved, then a board fix asked for, made by the agent and shown on the board](docs/kicad-review-demo.webp)
+
+*The 30-second demo above ([MP4](docs/kicad-review-demo.mp4)): the agent's side is scripted, but the commands it runs (`kicad-review wait`, `reply`, a KiCad python edit, `kicad-cli pcb drc`) and the pages are real.*
+
 ![Schematic diff: two versions side by side, the selected change with the agent's intent and a short thread](docs/screenshots/sch.webp)
 
 ![Board review: review items on the board, the selected one pointing at the unconnected pad](docs/screenshots/board.webp)
@@ -35,18 +39,24 @@ Review KiCad schematics and boards **together with a coding agent** (Claude Code
 - git, to compare git versions
 - A recent browser. The pages use no CDN and work offline.
 
-Tested on Windows 11 with KiCad 10.0. macOS and Linux paths are built in but not tested yet
-(see [KiCad location](#kicad-location)).
+Tested on Windows 11 with KiCad 10.0. macOS and Linux should work the same way (the KiCad paths for them are built
+in, see [KiCad location](#kicad-location)) but have not been tried yet: reports in the issues are welcome.
 
 ## Install
 
 ```bash
-pipx install git+https://github.com/yus988/kicad-review
+pipx install kicad-review
 ```
 
-or `pip install git+https://github.com/yus988/kicad-review`, or from a clone: `pip install -e .`
+[pipx](https://pipx.pypa.io/) puts it in its own environment, so nothing else in your Python changes. Other ways:
 
-This installs two commands: `kicad-review` and `talkpage` (the page base it is built on; usable on its own, see
+- `uvx kicad-review ...` runs it without installing ([uv](https://docs.astral.sh/uv/)).
+- `pipx install git+https://github.com/hapbeat/kicad-review` installs the latest commit.
+- Without installing anything: download or clone the repository and run `python kicad-review.py ...` in it. Any
+  Python 3.9+ works, including the one that comes with KiCad
+  (`"C:\Program Files\KiCad\10.0\bin\python.exe" kicad-review.py ...` on Windows).
+
+The package installs two commands: `kicad-review` and `talkpage` (the page base it is built on; usable on its own, see
 [docs/talkpage.ja.md](docs/talkpage.ja.md)).
 
 ## Try it with the example
@@ -121,7 +131,8 @@ otherwise confirm.
 python -m unittest discover tests
 ```
 
-The tests that run KiCad are skipped when `kicad-cli` is not found.
+The tests that run KiCad are skipped when `kicad-cli` is not found. A release is a tag `v<version>` matching
+`kicad_review.__version__`; the `release` workflow builds it and publishes it to PyPI.
 
 ## License
 

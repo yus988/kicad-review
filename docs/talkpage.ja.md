@@ -20,6 +20,7 @@ talkpage serve <root> [--port 8190] [--open <ページ>]
 - `http://127.0.0.1:8190/_talk/` に、状態のあるページの一覧と、エージェントの未読の数が出る
 - 起動の前に `http://127.0.0.1:8190/_talk/api/info` を見て、同じ root のサーバーが動いていれば再利用する（別の root なら `--port` を変える）。終了は Ctrl-C
 - ポートは `--port` か環境変数 `TALKPAGE_PORT`（既定 8190）。`wait` / `reply` / `ack` / `show` も同じ値を使う
+- 画面の言語は `--lang en|ja`（既定は環境変数 `TALKPAGE_LANG`、無ければ OS の言語が日本語なら日本語、ほかは英語）。ページ側の talkpage.js は、そのページの `<html lang>` に従う
 
 ## ページの作り方
 

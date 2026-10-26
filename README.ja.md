@@ -17,10 +17,20 @@ KiCad 10 の回路図と基板を、ユーザーとコーディングエージ�
 ## インストール
 
 ```
-pipx install git+https://github.com/yus988/kicad-review
+pipx install kicad-review
 ```
 
-`pip install git+https://github.com/yus988/kicad-review` でも、clone して `pip install -e .` でもよい。コマンド `kicad-review` と `talkpage` が入る。KiCad の場所は自動で探す（Windows は `%ProgramFiles%\KiCad\<版>\bin` の新しいもの、macOS は `/Applications/KiCad/KiCad.app`、Linux は `PATH`）。違う場所なら `--kicad-bin <kicad-cli のフォルダ>` か環境変数 `KICAD_BIN`、pcbnew の入った python は `KICAD_PYTHON` で渡す。動作を確かめたのは Windows 11 と KiCad 10.0 だけ。
+[pipx](https://pipx.pypa.io/) は専用の環境に入れるので、ほかの Python の環境は変わらない。ほかの入れ方:
+
+- `uvx kicad-review ...`: 入れずに実行する（[uv](https://docs.astral.sh/uv/)）
+- `pipx install git+https://github.com/hapbeat/kicad-review`: 最新のコミットを入れる
+- 何も入れない: repo を zip で落とすか clone して、その中で `python kicad-review.py ...`。Python 3.9 以上ならどれでもよく、KiCad に付いてくる python でも動く（Windows なら `"C:\Program Files\KiCad\10.0\bin\python.exe" kicad-review.py ...`）
+
+パッケージはコマンド `kicad-review` と `talkpage` を入れる。KiCad の場所は自動で探す（Windows は `%ProgramFiles%\KiCad\<版>\bin` の新しいもの、macOS は `/Applications/KiCad/KiCad.app`、Linux は `PATH`）。違う場所なら `--kicad-bin <kicad-cli のフォルダ>` か環境変数 `KICAD_BIN`、pcbnew の入った python は `KICAD_PYTHON` で渡す。動作を確かめたのは Windows 11 と KiCad 10.0 だけ（macOS・Linux も同じ作りで動くはずだが、試していない。結果を issue で知らせてもらえると助かる）。
+
+動画（30 秒、[MP4](docs/kicad-review-demo.mp4)）: 回路図の変更についてエージェントに聞いて承認し、基板で直しを頼むと、エージェントが直して基板に出るまで。エージェントの側は台本で動かしているが、実行しているコマンドと画面は本物。
+
+![使い方の動画](docs/kicad-review-demo.webp)
 
 ## 起動
 
