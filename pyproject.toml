@@ -24,8 +24,8 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/hapbeat/kicad-review"
-Issues = "https://github.com/hapbeat/kicad-review/issues"
+Homepage = "https://github.com/yus988/kicad-review"
+Issues = "https://github.com/yus988/kicad-review/issues"
 
 [project.scripts]
 kicad-review = "kicad_review.kireview:main"

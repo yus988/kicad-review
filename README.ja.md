@@ -23,7 +23,7 @@ pipx install kicad-review
 [pipx](https://pipx.pypa.io/) は専用の環境に入れるので、ほかの Python の環境は変わらない。ほかの入れ方:
 
 - `uvx kicad-review ...`: 入れずに実行する（[uv](https://docs.astral.sh/uv/)）
-- `pipx install git+https://github.com/hapbeat/kicad-review`: 最新のコミットを入れる
+- `pipx install git+https://github.com/yus988/kicad-review`: 最新のコミットを入れる
 - 何も入れない: repo を zip で落とすか clone して、その中で `python kicad-review.py ...`。Python 3.9 以上ならどれでもよく、KiCad に付いてくる python でも動く（Windows なら `"C:\Program Files\KiCad\10.0\bin\python.exe" kicad-review.py ...`）
 
 パッケージはコマンド `kicad-review` と `talkpage` を入れる。KiCad の場所は自動で探す（Windows は `%ProgramFiles%\KiCad\<版>\bin` の新しいもの、macOS は `/Applications/KiCad/KiCad.app`、Linux は `PATH`）。違う場所なら `--kicad-bin <kicad-cli のフォルダ>` か環境変数 `KICAD_BIN`、pcbnew の入った python は `KICAD_PYTHON` で渡す。動作を確かめたのは Windows 11 と KiCad 10.0 だけ（macOS・Linux も同じ作りで動くはずだが、試していない。結果を issue で知らせてもらえると助かる）。

@@ -51,7 +51,7 @@ pipx install kicad-review
 [pipx](https://pipx.pypa.io/) puts it in its own environment, so nothing else in your Python changes. Other ways:
 
 - `uvx kicad-review ...` runs it without installing ([uv](https://docs.astral.sh/uv/)).
-- `pipx install git+https://github.com/hapbeat/kicad-review` installs the latest commit.
+- `pipx install git+https://github.com/yus988/kicad-review` installs the latest commit.
 - Without installing anything: download or clone the repository and run `python kicad-review.py ...` in it. Any
   Python 3.9+ works, including the one that comes with KiCad
   (`"C:\Program Files\KiCad\10.0\bin\python.exe" kicad-review.py ...` on Windows).
