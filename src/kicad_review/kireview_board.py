@@ -18,6 +18,7 @@ import threading
 import time
 
 from . import kicad_paths as kp
+from .i18n import t
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DUMP = os.path.join(HERE, 'kireview_dump.py')
@@ -185,11 +186,11 @@ def nearest(dump, x, y, side):
             best = (dist, p)
     if best:
         p = best[1]
-        return '%s.%s' % (p['ref'], p['num']), '%s %s %s' % (p['ref'], p['num'], p['net'] or '(ネットなし)')
+        return '%s.%s' % (p['ref'], p['num']), '%s %s %s' % (p['ref'], p['num'], p['net'] or t('no_net'))
     hits = [f for f in dump['footprints'] if f['bbox'][0] <= x <= f['bbox'][2] and f['bbox'][1] <= y <= f['bbox'][3]]
     if hits:
         f = min(hits, key=lambda f: (f['side'] != side, (f['bbox'][2] - f['bbox'][0]) * (f['bbox'][3] - f['bbox'][1])))
-        return f['ref'], '%s (%s) %s' % (f['ref'], f['value'], '表' if f['side'] == 'F' else '裏')
+        return f['ref'], '%s (%s) %s' % (f['ref'], f['value'], t('side.F' if f['side'] == 'F' else 'side.B'))
     return None, ''
 
 

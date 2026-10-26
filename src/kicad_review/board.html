@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>基板 レビュー</title>
+<title data-i18n="board.title">Board review</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🟩</text></svg>">
 <link rel="stylesheet" href="/review.css">
 <style>
 header .name { font-weight: 700; max-width: 22em; overflow: hidden; text-overflow: ellipsis; }
 header .file { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
 #bstat { width: 7.5em; color: var(--muted); flex: 0 0 auto; }
-#bstat.err { color: var(--sev-必須); font-weight: 600; cursor: help; }
+#bstat.err { color: var(--sev-must); font-weight: 600; cursor: help; }
 
 /* board picker */
 #picker .prow { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
@@ -49,18 +49,18 @@ header .file { color: var(--muted); font-size: 12px; overflow: hidden; text-over
 <body>
 <header>
   <div id="tabs"></div>
-  <span class="name" id="bname">基板 レビュー</span>
+  <span class="name" id="bname" data-i18n="board.title">Board review</span>
   <span class="file" id="bfile"></span>
   <span id="bstat"></span>
-  <button id="pickBtn" title="レビューする基板（.kicad_pcb）を選ぶ">基板を選ぶ</button>
+  <button id="pickBtn" data-i18n="board.pick" data-i18n-title="board.pick.title">Choose board</button>
   <span id="presence"></span>
-  <button id="pageNew" class="off" title="このページの新しい版があります。押すと読み込み直す（入力中のコメントは残る）">画面を更新</button>
-  <button id="reload" title="基板ファイルを読み直す（保存すると自動でも読み直す）">再読み込み</button>
+  <button id="pageNew" class="off" data-i18n="page.new" data-i18n-title="page.new.title">Reload page</button>
+  <button id="reload" data-i18n="reload" data-i18n-title="board.reload.title">Reload</button>
 </header>
 <div id="picker" class="panel" hidden>
-  <div class="prow"><span class="k">パス</span><input id="pickPath" placeholder=".kicad_pcb のパス" spellcheck="false"></div>
-  <div class="prow"><span class="k">プロジェクト</span><select id="pickProj" title="親フォルダとその下 2 階層の KiCad プロジェクト（基板のあるもの）"></select></div>
-  <div class="btns"><button id="pickHint" hidden></button><span class="grow"></span><span id="pickMsg"></span><button id="pickClose">閉じる</button><button id="pickOpen" class="on">開く</button></div>
+  <div class="prow"><span class="k" data-i18n="board.path">Path</span><input id="pickPath" data-i18n-placeholder="board.path.ph" spellcheck="false"></div>
+  <div class="prow"><span class="k" data-i18n="board.project">Project</span><select id="pickProj" data-i18n-title="board.project.title"></select></div>
+  <div class="btns"><button id="pickHint" hidden></button><span class="grow"></span><span id="pickMsg"></span><button id="pickClose" data-i18n="close">Close</button><button id="pickOpen" class="on" data-i18n="board.open">Open</button></div>
 </div>
 <div id="lb" hidden></div>
 <div id="work">
@@ -68,51 +68,52 @@ header .file { color: var(--muted); font-size: 12px; overflow: hidden; text-over
 <div id="dockL" class="dock"></div><div class="dsplit" data-dock="L"></div>
 <main id="center">
   <div id="tools">
-    <div id="presets"><button data-p="F">表</button><button data-p="B">裏</button><button data-p="In">内層</button><button data-p="all">全部</button></div>
+    <div id="presets"><button data-p="F" data-i18n="board.F">Front</button><button data-p="B" data-i18n="board.B">Back</button><button data-p="In" data-i18n="board.In">Inner</button><button data-p="all" data-i18n="board.all">All</button></div>
     <div id="layerBoxes"></div>
-    <label class="opt" title="表示している面のパッドに、ピンの番号とネットの名前を出す（拡大すると出る）"><input type="checkbox" id="padText">ピン・ネット</label>
-    <label class="opt" title="銅箔のベタ（ゾーンの塗り）を、その層の下に薄く表示"><input type="checkbox" id="fillBox">ベタ</label>
-    <label class="opt" title="表示している面の部品の外形（コートヤード）をシルクの上に表示"><input type="checkbox" id="courtBox">外形</label>
-    <button id="fit" title="基板全体を表示。もう一度押すと元の拡大に戻る">全体</button>
+    <label class="opt" data-i18n-title="board.pads.title"><input type="checkbox" id="padText"><span data-i18n="board.pads">Pins / nets</span></label>
+    <label class="opt" data-i18n-title="board.fills.title"><input type="checkbox" id="fillBox"><span data-i18n="board.fills">Fills</span></label>
+    <label class="opt" data-i18n-title="board.court.title"><input type="checkbox" id="courtBox"><span data-i18n="board.court">Courtyards</span></label>
+    <button id="fit" data-i18n="board.fit" data-i18n-title="board.fit.title">Whole</button>
     <span id="coord"></span>
   </div>
   <div id="view">
     <div id="layers"></div>
     <svg id="ov" xmlns="http://www.w3.org/2000/svg"></svg>
     <div id="pop" hidden></div>
-    <div id="noBoard" hidden>基板が開かれていません（「基板を選ぶ」から開く）</div>
+    <div id="noBoard" hidden data-i18n="board.none">No board open (open one with "Choose board")</div>
   </div>
 </main>
 <div class="dsplit" data-dock="R"></div><div id="dockR" class="dock"></div>
 </div>
 <div class="dsplit" data-dock="B"></div><div id="dockB" class="dock"></div>
-<section class="panelbox" data-panel="list"><div class="ptitle"><span class="grip">⠿</span>一覧</div>
-  <div class="list-h"><span id="progress"></span><span class="grow"></span><button id="showUnread">未読も表示</button><button id="showDone">完了も表示</button></div>
+<section class="panelbox" data-panel="list"><div class="ptitle"><span class="grip">⠿</span><span data-i18n="panel.list">List</span></div>
+  <div class="list-h"><span id="progress"></span><span class="grow"></span><button id="showUnread" data-i18n="filter.unread">Show unread</button><button id="showDone" data-i18n="filter.done">Show done</button></div>
   <div id="list"></div>
 </section>
-<section class="panelbox" data-panel="detail"><div class="ptitle"><span class="grip">⠿</span>詳細</div>
-  <div id="detail"><div id="detBody"><div class="empty">項目を選ぶと、ここに内容が出ます。基板の上を押すと、その場所について質問できます。</div></div>
+<section class="panelbox" data-panel="detail"><div class="ptitle"><span class="grip">⠿</span><span data-i18n="panel.detail">Details</span></div>
+  <div id="detail"><div id="detBody"><div class="empty" data-i18n="board.detail.empty">Select an item to see it here. Click the board to ask about a spot.</div></div>
     <div id="post" hidden>
       <div class="review-btns" id="stBtns"></div>
-      <div class="post-row"><textarea id="comment" rows="1" placeholder="コメント（エージェントに届く。Ctrl+Enter で送信）"></textarea><button id="send">送信</button></div>
+      <div class="post-row"><textarea id="comment" rows="1" data-i18n-placeholder="board.comment"></textarea><button id="send" data-i18n="send">Send</button></div>
     </div>
   </div>
 </section>
 </div>
+<script src="/i18n.js"></script>
 <script src="/review.js"></script>
 <script>
 'use strict';
 // ------------------------------------------------------------ constants and helpers
 const POLL_MS = 3000;
-const { $, esc, store, api, notice, DONE, SEVERITIES, ST_MARK, ST_NAME } = Review;
+const { $, esc, store, api, notice, DONE, SEVERITIES, SEV_LABEL, ST_MARK, ST_NAME } = Review;
 // drawing colours on the black board
-const ST_COLOR = { '': '#ffd400', '自分で修正': '#ff8c00', '修正を依頼': '#ff8c00', '質問': '#ff3cff', 'このまま': '#9aa0a6', '修正済み': '#2ecc40' };
+const ST_COLOR = { '': '#ffd400', 'self-fix': '#ff8c00', 'fix': '#ff8c00', 'question': '#ff3cff', 'ok': '#9aa0a6', 'fixed': '#2ecc40' };
 const HL_COLOR = '#ff00aa';    // a part shown from a link (#ref=)
 const FILL_OPACITY = 0.35;     // zone fills under their copper layer, times that layer's opacity
 const FOCUS_MM = 20;          // selecting an item shows about this much board around it
 const PIN_FOCUS_MM = 9;       // ... or around its pins, when it names them
 const MAX_SCALE = 150;        // px per mm
-const sideName = s => s === 'F' ? '表' : s === 'B' ? '裏' : s;
+const sideName = s => s === 'F' || s === 'B' ? t('side.' + s) : s;
 const cuLayer = s => s === 'F' ? 'F.Cu' : s === 'B' ? 'B.Cu' : s + '.Cu';
 const idKey = id => { const m = /^(.*?)(\d+)$/.exec(id); return m ? [m[1], +m[2]] : [id, 0]; };
 const byId = (a, b) => { const x = idKey(a), y = idKey(b); return x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : x[1] - y[1]; };
@@ -142,7 +143,7 @@ const fillImgs = {};           // copper layer name -> <img> with its zone fills
 function copperKeys() { return S.board.copper.map(n => n === 'F.Cu' ? 'F' : n === 'B.Cu' ? 'B' : n.replace('.Cu', '')); }
 function innerKeys() { return copperKeys().filter(k => k !== 'F' && k !== 'B'); }
 
-// presets F / B / 内層 leave the courtyards out (外形 or the layer boxes turn them on); 全部 has every layer
+// presets F / B / In leave the courtyards out (Courtyards or the layer boxes turn them on); all has every layer
 function presetLayers(p) {
   const inner = S.board.copper.filter(n => n !== 'F.Cu' && n !== 'B.Cu');
   if (p === 'F') return ['F.Cu', 'F.Silkscreen', 'Edge.Cuts'];
@@ -171,7 +172,7 @@ function layerOrder() {
   return [...order, 'Edge.Cuts'];
 }
 
-// 外形: the courtyard of the side(s) on show (F for F and the inner layers, B for B, both for 全部)
+// Courtyards: the courtyard of the side(s) on show (F for F and the inner layers, B for B, both for all)
 function courtyards() {
   if (!S.court) return [];
   if (S.layers.preset === 'all') return ['F.Courtyard', 'B.Courtyard'];
@@ -234,7 +235,7 @@ function loadLayerImages() {
   }
   const fresh = want.map(([name, url, fill]) => new Promise(res => {
     const im = new Image();
-    im.alt = name + (fill ? ' ベタ' : '');
+    im.alt = name + (fill ? t('board.fill.alt') : '');
     im.onload = im.onerror = () => res([name, im, fill]);
     im.src = url;
   }));
@@ -269,7 +270,7 @@ function fitBoard() {
   redraw();
 }
 
-// 全体 toggles: the first press shows the whole board and keeps the view it left, the second press goes back to that view
+// Whole toggles: the first press shows the whole board and keeps the view it left, the second press goes back to that view
 let viewBeforeWhole = null;
 function toggleWhole() {
   if (!S.board) return;
@@ -386,7 +387,7 @@ function drawOverlay() {
   for (const id of ids) {
     const it = S.items[id], g = markerGeom(it);
     const col = ST_COLOR[stOf(it)] || ST_COLOR[''];
-    const sel = id === S.sel, fixed = stOf(it) === '修正済み', done = DONE.has(stOf(it));
+    const sel = id === S.sel, fixed = stOf(it) === 'fixed', done = DONE.has(stOf(it));
     const onShown = (it.sides || []).some(s => vis.has(cuLayer(s)));
     const w = sel ? 4 : done && !fixed ? 1.2 : 2.2;
     const op = S.sel && !sel ? 0.4 : 1;
@@ -520,7 +521,7 @@ function whatIsAt(x, y, side) {
     const dist = p.poly && inside(p.poly, x, y) ? 0 : Math.hypot(p.x - x, p.y - y);
     if (dist <= 1.5 && (!best || dist < best[0])) best = [dist, p];
   }
-  if (best) { const p = best[1]; return p.ref + ' ' + p.num + ' ' + (p.net || '(ネットなし)'); }
+  if (best) { const p = best[1]; return p.ref + ' ' + p.num + ' ' + (p.net || t('board.nonet')); }
   const hits = d.footprints.filter(f => f.bbox[0] <= x && x <= f.bbox[2] && f.bbox[1] <= y && y <= f.bbox[3]);
   if (!hits.length) return '';
   const area = f => (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]);
@@ -542,14 +543,14 @@ function boardClick(e) {
 function showPop(px, py, x, y) {
   const pop = $('pop'), side = S.layers.active;
   const what = whatIsAt(x, y, side);
-  pop.innerHTML = '<div class="what">' + esc(what || '（部品なし）') + '</div>' +
-    '<div class="xy">x ' + x.toFixed(2) + '  y ' + y.toFixed(2) + ' mm（' + esc(sideName(side)) + '）</div>' +
-    '<div class="ask"><button id="askBtn">ここに質問</button></div>';
+  pop.innerHTML = '<div class="what">' + esc(what || t('board.nopart')) + '</div>' +
+    '<div class="xy">x ' + x.toFixed(2) + '  y ' + y.toFixed(2) + ' mm' + esc(t('paren', { x: sideName(side) })) + '</div>' +
+    '<div class="ask"><button id="askBtn">' + esc(t('board.ask')) + '</button></div>';
   pop.hidden = false;
   pop.style.left = Math.max(6, Math.min(px + 12, view.clientWidth - pop.offsetWidth - 6)) + 'px';
   pop.style.top = Math.max(6, Math.min(py + 12, view.clientHeight - pop.offsetHeight - 6)) + 'px';
   $('askBtn').onclick = () => {
-    pop.querySelector('.ask').innerHTML = '<input id="askText" placeholder="質問（Enter で送信）"><button id="askSend">送信</button>';
+    pop.querySelector('.ask').innerHTML = '<input id="askText" placeholder="' + esc(t('board.ask.ph')) + '"><button id="askSend">' + esc(t('send')) + '</button>';
     pop.style.left = Math.max(6, Math.min(px + 12, view.clientWidth - pop.offsetWidth - 6)) + 'px';
     const inp = $('askText');
     inp.focus();
@@ -561,8 +562,8 @@ function showPop(px, py, x, y) {
         hidePop();
         S.items[it.id] = stripId(it);
         select(it.id, false);
-        notice($('send'), '送信しました');
-      } catch (err) { notice($('askSend'), 'エラー: ' + err.message); }
+        notice($('send'), t('sent'));
+      } catch (err) { notice($('askSend'), t('error', { msg: err.message })); }
     };
     $('askSend').onclick = send;
     inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); send(); } else if (ev.key === 'Escape') hidePop(); });
@@ -575,21 +576,21 @@ function renderList() {
   const list = $('list'), top = list.scrollTop;
   const ids = Object.keys(S.items).sort(byId);
   const all = ids.length, left = ids.filter(id => !DONE.has(stOf(S.items[id]))).length;
-  const fixedN = ids.filter(id => stOf(S.items[id]) === '修正済み').length;
-  $('progress').innerHTML = S.board ? '残り ' + left + ' / 全 ' + all + '<span class="fixed">　✔ 修正済み ' + fixedN + '</span>' : '';
+  const fixedN = ids.filter(id => stOf(S.items[id]) === 'fixed').length;
+  $('progress').innerHTML = S.board ? esc(t('progress', { left, all })) + '<span class="fixed">' + esc(t('progress.fixed', { n: fixedN })) + '</span>' : '';
   filt.paint();
   let html = '';
   for (const sev of [...SEVERITIES, '']) {
     const grp = ids.filter(id => sev ? S.items[id].severity === sev : !SEVERITIES.includes(S.items[id].severity));
     const shown = grp.filter(id => filt.keep(id, S.items[id], S.sel));
     if (!shown.length) continue;
-    html += Review.groupHtml(sev || 'その他', shown.length);
+    html += Review.groupHtml(sev ? SEV_LABEL[sev] : t('sev.other'), shown.length);
     for (const id of shown) {
       const it = S.items[id];
-      html += Review.rowHtml({ id, it: Object.assign({ owner: '未定' }, it), label: id, title: it.title, sel: id === S.sel });
+      html += Review.rowHtml({ id, it: Object.assign({ owner: 'tbd' }, it), label: id, title: it.title, sel: id === S.sel });
     }
   }
-  list.innerHTML = html || '<div class="empty">' + (!S.board ? '基板が開かれていません' : all ? '残りの項目はありません（「完了も表示」で全部）' : '項目はまだありません') + '</div>';
+  list.innerHTML = html || '<div class="empty">' + esc(t(!S.board ? 'board.none.short' : all ? 'list.left.none' : 'board.items.none')) + '</div>';
   list.scrollTop = top;
 }
 
@@ -601,24 +602,26 @@ function renderDetail() {
   foot.show();
   if (!it) {
     detailSig = '';
-    $('detBody').innerHTML = '<div class="empty">項目を選ぶと、ここに内容が出ます。基板の上を押すと、その場所について質問できます。</div>';
+    $('detBody').innerHTML = '<div class="empty">' + esc(t('board.detail.empty')) + '</div>';
     return;
   }
   const sig = S.sel + JSON.stringify(it) + schLoaded();
   if (sig === detailSig) return;
   detailSig = sig;
   const st = stOf(it);
-  const where = (it.sides || []).map(sideName).join('・') + (placed(it) ? '　x ' + Number(it.x).toFixed(2) + '  y ' + Number(it.y).toFixed(2) + ' mm' : '');
+  const where = (it.sides || []).map(sideName).join(t('list.sep')) +
+    (placed(it) ? t('board.xy', { x: Number(it.x).toFixed(2), y: Number(it.y).toFixed(2) }) : '');
   // each part links to the schematic page (a pin REF.NUM to its part) when a schematic is loaded
-  const refLink = r => schLoaded() ? '<a href="/sch#ref=' + encodeURIComponent(r.replace(/\.[^.]+$/, '')) + '" target="kireview-sch" title="回路図で見る">' + esc(r) + '</a>' : esc(r);
-  let h = '<div class="t">' + esc(S.sel) + '　' + esc(it.title) + '</div>' +
-    Review.askHtml(Object.assign({ owner: '未定' }, it), '/figures/' + encodeURIComponent(S.board.stem) + '/') +
-    '<div class="row"><span class="k">場所</span>' + esc(where) + '</div>' +
-    '<div class="row"><span class="k">部品</span>' + (it.refs && it.refs.length ? it.refs.map(refLink).join(', ') : '<span class="none">-</span>') +
+  const refLink = r => schLoaded() ? '<a href="/sch#ref=' + encodeURIComponent(r.replace(/\.[^.]+$/, '')) + '" target="kireview-sch" title="' + esc(t('board.insch.title')) + '">' + esc(r) + '</a>' : esc(r);
+  const k = key => '<span class="k">' + esc(t(key)) + '</span>', arrows = '<span class="meaning">' + esc(t('board.arrows')) + '</span>';
+  let h = '<div class="t">' + esc(S.sel + t('gap') + it.title) + '</div>' +
+    Review.askHtml(Object.assign({ owner: 'tbd' }, it), '/figures/' + encodeURIComponent(S.board.stem) + '/') +
+    '<div class="row">' + k('k.where') + esc(where) + '</div>' +
+    '<div class="row">' + k('k.parts') + (it.refs && it.refs.length ? it.refs.map(refLink).join(', ') : '<span class="none">-</span>') +
     (it.near ? '<span class="meaning">' + esc(it.near) + '</span>' : '') + '</div>' +
-    (it.pins && it.pins.length ? '<div class="row"><span class="k">ピン</span>' + esc(it.pins.join(', ')) + '<span class="meaning">（基板の図で矢印）</span></div>' : '') +
-    (it.spots && it.spots.length ? '<div class="row"><span class="k">しるし</span>' + esc(it.spots.map((s, i) => s.label || String(i + 1)).join(', ')) + '<span class="meaning">（基板の図で矢印）</span></div>' : '') +
-    '<div class="row"><span class="k">状態</span><span class="badge ' + Review.stClass(st) + '">' + (ST_MARK[st] || '') + ' ' + esc(ST_NAME[st] || st) + '</span></div>';
+    (it.pins && it.pins.length ? '<div class="row">' + k('k.pins') + esc(it.pins.join(', ')) + arrows + '</div>' : '') +
+    (it.spots && it.spots.length ? '<div class="row">' + k('k.spots') + esc(it.spots.map((s, i) => s.label || String(i + 1)).join(', ')) + arrows + '</div>' : '') +
+    '<div class="row">' + k('k.status') + '<span class="badge ' + Review.stClass(st) + '">' + (ST_MARK[st] || '') + ' ' + esc(ST_NAME[st] || st) + '</span></div>';
   h += Review.notesHtml(it) + Review.threadHtml(it.thread);
   $('detBody').innerHTML = h;
   Review.bindFigures($('detBody'));
@@ -687,7 +690,7 @@ function renderAll() { renderList(); renderDetail(); drawOverlay(); }
 // #ref=<REF>: show that part (its side, framed), and the popup at its centre so it can be asked about
 function gotoRef(ref) {
   const f = S.board && S.board.dump.footprints.find(p => p.ref === ref);
-  if (!f) { notice($('bname'), ref + ' は基板にありません'); return; }
+  if (!f) { notice($('bname'), t('board.ref.missing', { ref })); return; }
   clearWhole();
   setPreset(f.side === 'B' ? 'B' : 'F');
   const b = f.bbox, cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2;
@@ -709,7 +712,7 @@ function onTalk(d) {
 // ------------------------------------------------------------ board: open, reload after a save in KiCad
 function showBoardStatus(st, err) {
   const el = $('bstat');
-  el.textContent = st === 'reloading' ? '再読み込み中' : st === 'error' ? '書き出し失敗' : '';
+  el.textContent = st === 'reloading' ? t('board.reloading') : st === 'error' ? t('board.export.failed') : '';
   el.classList.toggle('err', st === 'error');
   el.title = err || '';
 }
@@ -722,7 +725,7 @@ async function applyBoard(b) {
   $('bname').textContent = b.stem;
   $('bfile').textContent = b.board;
   $('bfile').title = b.board;
-  document.title = b.stem + ' 基板レビュー';
+  document.title = t('board.doctitle', { name: b.stem });
   buildLayerBoxes();
   if (first) {
     let saved = null;
@@ -771,7 +774,7 @@ async function fillProjects(dir) {
   box.innerHTML = '';
   const head = document.createElement('option');
   head.value = '';
-  head.textContent = dir ? 'プロジェクト一覧（' + dir + '）' : 'プロジェクト一覧（パスを入れると出る）';
+  head.textContent = dir ? t('board.projects', { dir }) : t('board.projects.none');
   head.disabled = true;
   box.appendChild(head);
   box.value = '';
@@ -787,7 +790,7 @@ async function fillProjects(dir) {
     }
     const cur = $('pickPath').value.replace(/\\/g, '/');
     if ([...box.options].some(o => o.value === cur)) box.value = cur;
-  } catch (err) { head.textContent = '一覧の取得失敗: ' + err.message; }
+  } catch (err) { head.textContent = t('list.failed', { msg: err.message }); }
 }
 function openPicker(hint) {
   const p = $('picker'), r = $('pickBtn').getBoundingClientRect();
@@ -797,7 +800,7 @@ function openPicker(hint) {
   $('pickPath').value = cur || hint || '';
   const hb = $('pickHint');
   hb.hidden = !hint;
-  if (hint) { hb.textContent = baseName(hint) + ' を開く'; hb.title = hint; hb.onclick = () => { $('pickPath').value = hint; openBoard(hb); }; }
+  if (hint) { hb.textContent = t('board.open.name', { name: baseName(hint) }); hb.title = hint; hb.onclick = () => { $('pickPath').value = hint; openBoard(hb); }; }
   $('pickMsg').textContent = '';
   p.hidden = false;
   fillProjects(projectsDir(cur || hint));
@@ -805,15 +808,15 @@ function openPicker(hint) {
 const pickerOpen = () => !$('picker').hidden;
 async function openBoard(btn) {
   const path = $('pickPath').value.trim();
-  if (!path) { notice(btn, '.kicad_pcb のパスを指定'); return; }
-  $('pickMsg').textContent = '書き出し中…';
+  if (!path) { notice(btn, t('board.need.path')); return; }
+  $('pickMsg').textContent = t('exporting');
   document.querySelectorAll('#picker button').forEach(b => { b.disabled = true; });
   try {
     const b = await api('/api/board/open', { path });
     $('picker').hidden = true;
     await applyBoard(b);
-    notice($('pickBtn'), b.stem + ' を開きました');
-  } catch (err) { notice(btn, 'エラー: ' + err.message); }
+    notice($('pickBtn'), t('board.opened', { name: b.stem }));
+  } catch (err) { notice(btn, t('error', { msg: err.message })); }
   finally {
     $('pickMsg').textContent = '';
     document.querySelectorAll('#picker button').forEach(b => { b.disabled = false; });
@@ -837,7 +840,8 @@ function initLayout() {
   $('fit').addEventListener('click', toggleWhole);
   $('reload').addEventListener('click', async e => {
     const btn = e.currentTarget;
-    try { await api('/api/board/reload', {}); showBoardStatus('reloading'); notice(btn, '読み直します'); } catch (err) { notice(btn, 'エラー: ' + err.message); }
+    try { await api('/api/board/reload', {}); showBoardStatus('reloading'); notice(btn, t('board.rereading')); }
+    catch (err) { notice(btn, t('error', { msg: err.message })); }
   });
   $('pickBtn').addEventListener('click', async () => {
     if (pickerOpen()) { $('picker').hidden = true; return; }
@@ -872,7 +876,7 @@ async function main() {
   initPanZoom();
   renderAll();
   let b;
-  try { b = await api('/api/board'); } catch (err) { notice($('bname'), '読み込み失敗: ' + err.message); return; }
+  try { b = await api('/api/board'); } catch (err) { notice($('bname'), t('load.failed', { msg: err.message })); return; }
   if (b.empty) noBoard(b);
   else await applyBoard(b);
   takeRef();

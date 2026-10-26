@@ -1,7 +1,7 @@
 /* kicad-review: styles shared by the schematic page (sch.html) and the board page (board.html) */
 :root {
   --bg: #f4f4f2; --panel: #ffffff; --line: #d8d8d4; --text: #222; --muted: #6b6b66; --sel: #ff00aa; --link: #2b6fd6;
-  --sev-必須: #d33a2c; --sev-推奨: #e07800; --sev-任意: #2b6fd6; --sev-情報: #8a8a85;
+  --sev-must: #d33a2c; --sev-should: #e07800; --sev-could: #2b6fd6; --sev-info: #8a8a85;
   --st-open: #e0b400; --st-work: #ff8c00; --st-ask: #e01ee0; --st-done: #1a9a36; --st-keep: #7a7f85;
 }
 * { box-sizing: border-box; }
@@ -29,12 +29,12 @@ header { flex: 0 0 auto; display: flex; gap: 8px; align-items: center; padding: 
 #presence::before { content: '●'; margin-right: 3px; color: #bbb; }
 #presence[data-p="listening"]::before { color: var(--st-done); }
 #presence[data-p="working"]::before { color: var(--st-work); }
-#presence[data-p="down"] { color: var(--sev-必須); }
-#presence[data-p="down"]::before { color: var(--sev-必須); }
-#pageNew { background: var(--sev-推奨); border-color: var(--sev-推奨); color: #fff; font-weight: 700; }
+#presence[data-p="down"] { color: var(--sev-must); }
+#presence[data-p="down"]::before { color: var(--sev-must); }
+#pageNew { background: var(--sev-should); border-color: var(--sev-should); color: #fff; font-weight: 700; }
 #pageNew.off { visibility: hidden; }   /* keeps its place so the header does not shift */
 
-/* the work area: the drawing (#center) and the docks 左 / 右 / 下 holding the panels 一覧 and 詳細 */
+/* the work area: the drawing (#center) and the docks left / right / bottom holding the panels list and detail */
 #work { position: relative; flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; --dockL: 400px; --dockR: 380px; --dockB: 260px; }
 #upper { flex: 1 1 0; min-height: 0; display: flex; }
 #center { flex: 1 1 0; min-width: 0; min-height: 0; display: grid; grid-template-rows: auto 1fr; }
@@ -99,12 +99,13 @@ body.moving, body.moving * { cursor: move !important; user-select: none; }
 /* chips and status marks */
 .chip { display: inline-block; font-size: 11px; line-height: 16px; padding: 0 5px; border-radius: 3px; color: #fff; font-weight: 600; vertical-align: 1px; }
 .chip.owner { background: #fff; color: #444; border: 1px solid #bbb; font-weight: 400; line-height: 14px; }
-.s-未確認 { color: var(--st-open); } .s-自分で修正, .s-修正を依頼 { color: var(--st-work); }
-.s-質問 { color: var(--st-ask); } .s-修正済み { color: var(--st-done); } .s-このまま { color: var(--st-keep); }
+/* status codes: '' (s-open) not reviewed, ok, fix, fixed; question and self-fix from older reviews */
+.s-open { color: var(--st-open); } .s-self-fix, .s-fix { color: var(--st-work); }
+.s-question { color: var(--st-ask); } .s-fixed { color: var(--st-done); } .s-ok { color: var(--st-keep); }
 .badge { display: inline-block; padding: 0 8px; border-radius: 9px; color: #fff; font-weight: 700; background: var(--st-open); }
-.badge.s-修正済み { background: var(--st-done); color: #fff; } .badge.s-このまま { background: var(--st-keep); color: #fff; }
-.badge.s-質問 { background: var(--st-ask); color: #fff; } .badge.s-自分で修正, .badge.s-修正を依頼 { background: var(--st-work); color: #fff; }
-.badge.s-未確認 { color: #222; }
+.badge.s-fixed { background: var(--st-done); color: #fff; } .badge.s-ok { background: var(--st-keep); color: #fff; }
+.badge.s-question { background: var(--st-ask); color: #fff; } .badge.s-self-fix, .badge.s-fix { background: var(--st-work); color: #fff; }
+.badge.s-open { color: #222; }
 
 /* detail sections */
 #detail .t { font-weight: 700; font-size: 14px; }
@@ -116,9 +117,9 @@ body.moving, body.moving * { cursor: move !important; user-select: none; }
 #detail .action { white-space: pre-wrap; background: #eef4ff; border-radius: 4px; padding: 5px 8px; }
 #detail .why { white-space: pre-wrap; background: #eef4ff; border-radius: 4px; padding: 5px 8px; }
 #detail .why.none { background: none; color: var(--muted); padding: 0; }
-#detail .req { white-space: pre-wrap; background: #fff1d6; border-left: 4px solid var(--sev-推奨); border-radius: 4px; padding: 6px 9px;
+#detail .req { white-space: pre-wrap; background: #fff1d6; border-left: 4px solid var(--sev-should); border-radius: 4px; padding: 6px 9px;
   font-weight: 600; font-size: 14px; margin: 6px 0 4px; }
-#detail .req::before { content: '依頼'; display: block; font-size: 11px; color: var(--sev-推奨); margin-bottom: 1px; }
+#detail .req::before { content: attr(data-label); display: block; font-size: 11px; color: var(--sev-should); margin-bottom: 1px; }
 #detail .bg { color: #555; }
 #detail .figs img { display: block; max-width: 100%; margin: 4px 0; border-radius: 4px; cursor: zoom-in; background: #111; }
 #detail .none { color: var(--muted); }
@@ -137,10 +138,10 @@ body.moving, body.moving * { cursor: move !important; user-select: none; }
 #post[hidden] { display: none; }
 .review-btns { display: flex; gap: 4px; margin: 0 0 4px; flex-wrap: nowrap; }
 .review-btns button { flex: 1 1 0; min-width: 0; padding: 1px 0; font-size: 12px; }
-.review-btns button[data-st="修正済み"] { flex-grow: 1.4; color: var(--st-done); border-color: var(--st-done); font-weight: 700; }
-.review-btns button.on[data-st="修正済み"] { background: var(--st-done); border-color: var(--st-done); color: #fff; }
-.review-btns button.on[data-st="このまま"] { background: var(--st-keep); border-color: var(--st-keep); }
-.review-btns button.on[data-st="修正を依頼"] { background: var(--st-work); border-color: var(--st-work); color: #fff; }
+.review-btns button[data-st="fixed"] { flex-grow: 1.4; color: var(--st-done); border-color: var(--st-done); font-weight: 700; }
+.review-btns button.on[data-st="fixed"] { background: var(--st-done); border-color: var(--st-done); color: #fff; }
+.review-btns button.on[data-st="ok"] { background: var(--st-keep); border-color: var(--st-keep); }
+.review-btns button.on[data-st="fix"] { background: var(--st-work); border-color: var(--st-work); color: #fff; }
 #comment { flex: 1; min-width: 0; font: inherit; height: 28px; max-height: 120px; resize: none; padding: 3px 6px; line-height: 1.45;
   border: 1px solid var(--line); border-radius: 4px; }
 .post-row { display: flex; align-items: flex-end; gap: 6px; }

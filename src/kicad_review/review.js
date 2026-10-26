@@ -1,6 +1,6 @@
 // kicad-review: code shared by the schematic page (sch.html) and the board page (board.html), as window.Review.
 // The review notes are talkpage items: this file reads them with talkpage's long poll (/_talk/api/state) and writes
-// with /_talk/api/user and /_talk/api/seen; the pages do not load talkpage.js.
+// with /_talk/api/user and /_talk/api/seen; the pages do not load talkpage.js. The text comes from i18n.js (t()).
 'use strict';
 (function () {
   // ------------------------------------------------------------ helpers
@@ -33,39 +33,37 @@
   }
 
   // ------------------------------------------------------------ statuses, severity, owner
-  // stored values: '' 未確認, このまま (OK), 修正を依頼 (直して), 修正済み; 質問 and 自分で修正 come from older reviews (no button)
-  const STATUS_BTNS = ['修正済み', '修正を依頼', 'このまま'];
-  const BTN_LABEL = { '修正済み': '✔ 修正済み', '修正を依頼': '⚑ 直して', 'このまま': '✓ OK' };
-  const BTN_TITLE = { '修正済み': '直した・直っている。', '修正を依頼': 'エージェントに直してもらう（コメントは任意）。',
-    'このまま': '確認した・このままでよい（直さない）。' };
-  const ST_NAME = { '': '未確認', 'このまま': 'OK（このまま）', '修正を依頼': '直して（修正を依頼）', '修正済み': '修正済み',
-    '質問': '質問', '自分で修正': '自分で修正' };
-  const ST_MARK = { '': '○', 'このまま': '✓', '修正を依頼': '⚑', '修正済み': '✔', '質問': '？', '自分で修正': '✎' };
-  const ST_LINE = { '': '未確認に戻した', 'このまま': '✓ OK', '修正を依頼': '⚑ 直して', '修正済み': '✔ 修正済み',
-    '質問': '？ 質問', '自分で修正': '✎ 自分で修正' };
-  const DONE = new Set(['このまま', '修正済み']);
-  const SEVERITIES = ['必須', '推奨', '任意', '情報'];
-  const SEV_MEANING = { '必須': '直さないと動かない・壊れる・製造で不良', '推奨': 'できれば直してほしい（性能・信頼性・製造の余裕）',
-    '任意': '直さなくても動作・製造に影響しない（見た目など）', '情報': 'そのままでよい・変更の報告' };
-  const OWNER_MEANING = { '人': 'KiCad で手で直す方が早い', 'エージェント': 'エージェントが直す', '未定': '担当はまだ決めていない' };
-  const stClass = st => 's-' + (st || '未確認');     // CSS class of a status (.s-未確認 for '')
+  // stored values (codes): '' not reviewed, ok, fix (please fix), fixed; question and self-fix come from older reviews
+  // (no button). The text of each code is in i18n.js.
+  const STATUSES = ['', 'ok', 'fix', 'fixed', 'question', 'self-fix'];
+  const STATUS_BTNS = ['fixed', 'fix', 'ok'];
+  const byCode = (codes, key) => Object.fromEntries(codes.map(c => [c, t(key(c))]));
+  const BTN_LABEL = byCode(STATUS_BTNS, c => 'st.btn.' + c);
+  const BTN_TITLE = byCode(STATUS_BTNS, c => 'st.title.' + c);
+  const ST_NAME = byCode(STATUSES, c => 'st.name.' + (c || 'open'));
+  const ST_MARK = { '': '○', 'ok': '✓', 'fix': '⚑', 'fixed': '✔', 'question': t('st.mark.question'), 'self-fix': '✎' };
+  const ST_LINE = byCode(STATUSES, c => 'st.line.' + (c || 'open'));
+  const DONE = new Set(['ok', 'fixed']);
+  const SEVERITIES = ['must', 'should', 'could', 'info'];
+  const OWNERS = ['human', 'agent', 'tbd'];
+  const SEV_LABEL = byCode(SEVERITIES, c => 'sev.' + c);
+  const SEV_MEANING = byCode(SEVERITIES, c => 'sev.' + c + '.meaning');
+  const OWNER_LABEL = byCode(OWNERS, c => 'owner.' + c);
+  const OWNER_MEANING = byCode(OWNERS, c => 'owner.' + c + '.meaning');
+  const stClass = st => 's-' + (st || 'open');     // CSS class of a status (.s-open for '')
 
   const isWaiting = it => !!it && (it.user_rev || 0) > (it.agent_rev || 0);
   const isUnread = it => !!it && (it.thread || []).some(m => m.who === 'agent' && m.text && (m.rev || 0) > (it.seen_rev || 0));
 
   // ------------------------------------------------------------ talkpage long poll
-  const PRESENCE = {
-    listening: ['エージェント 受付中', 'チェックとコメントは、すぐエージェントに届きます'],
-    working: ['エージェント 対応中', 'エージェントが届いた書き込みを処理しています。この間の書き込みも保存され、次に受け付けたときに届きます'],
-    absent: ['エージェント 待ち受けなし', '書き込みは保存されます。エージェントが待ち受けを始めたときに届きます'],
-    down: ['サーバー未接続', 'サーバーにつながりません。この間の書き込みは保存されません'],
-  };
+  const PRESENCE = Object.fromEntries(['listening', 'working', 'absent', 'down'].map(p =>
+    [p, [t('presence.' + p), t('presence.' + p + '.title')]]));
   function showPresence(p, why) {
     const el = $('presence');
     if (!el) return;
-    const t = PRESENCE[p] || PRESENCE.absent;
-    el.textContent = t[0];
-    el.title = t[1] + (p === 'down' && why ? '（' + why + '）' : '');
+    const txt = PRESENCE[p] || PRESENCE.absent;
+    el.textContent = txt[0];
+    el.title = txt[1] + (p === 'down' && why ? t('paren', { x: why }) : '');
     el.dataset.p = p;
   }
 
@@ -121,7 +119,8 @@
   function initHeader(view) {
     window.name = 'kireview-' + view;     // the cross-links and the tabs of the other page come back to this tab
     const tabs = $('tabs');
-    tabs.innerHTML = '<a href="/sch" target="kireview-sch" data-v="sch">回路図</a><a href="/board" target="kireview-board" data-v="board">基板</a>';
+    tabs.innerHTML = '<a href="/sch" target="kireview-sch" data-v="sch">' + esc(t('tab.sch')) + '</a>' +
+      '<a href="/board" target="kireview-board" data-v="board">' + esc(t('tab.board')) + '</a>';
     tabs.querySelector('[data-v="' + view + '"]').classList.add('cur');
     $('pageNew').addEventListener('click', () => location.reload());
     const poll = async () => {
@@ -131,7 +130,7 @@
       tabs.querySelectorAll('a').forEach(a => {
         const loaded = !!info[a.dataset.v];
         a.classList.toggle('off', !loaded);
-        a.title = loaded ? (a.dataset.v === 'sch' ? info.sch.title : info.board.stem) : '読み込まれていない（開くと選ぶ画面）';
+        a.title = loaded ? (a.dataset.v === 'sch' ? info.sch.title : info.board.stem) : t('tab.off');
       });
       for (const fn of infoListeners) { try { fn(info); } catch (e) { console.error(e); } }
     };
@@ -148,8 +147,8 @@
     return decodeURIComponent(m[1]).trim() || null;
   }
 
-  // ------------------------------------------------------------ list filters (未読も表示 / 完了も表示)
-  // finished items are hidden unless 完了も表示; with 未読も表示 a finished item with an unread reply or waiting for one is
+  // ------------------------------------------------------------ list filters (show unread / show done)
+  // finished items are hidden unless show done; with show unread a finished item with an unread reply or waiting for one is
   // listed and stays listed (read or not) until a filter button is pressed, so rows do not vanish on a click
   function filters(prefix, onChange) {
     const f = {
@@ -163,8 +162,8 @@
       },
       paint() { $('showDone').classList.toggle('on', f.showDone); $('showUnread').classList.toggle('on', f.showUnread); },
     };
-    $('showDone').title = '確認済み（OK・修正済み）の項目も一覧に表示';
-    $('showUnread').title = '確認済みでも、未読の返信・返信待ちがある項目は一覧に表示';
+    $('showDone').title = t('filter.done.title');
+    $('showUnread').title = t('filter.unread.title');
     $('showDone').addEventListener('click', () => { f.showDone = !f.showDone; store.set(prefix + '.showDone', f.showDone ? '1' : '0'); f.stick.clear(); onChange(); });
     $('showUnread').addEventListener('click', () => { f.showUnread = !f.showUnread; store.set(prefix + '.showUnread', f.showUnread ? '1' : '0'); f.stick.clear(); onChange(); });
     return f;
@@ -173,17 +172,18 @@
   // ------------------------------------------------------------ list rows
   function sevChip(sev) {
     const c = getComputedStyle(document.documentElement).getPropertyValue('--sev-' + sev).trim() || '#8a8a85';
-    return '<span class="chip" style="background:' + c + '">' + esc(sev || '-') + '</span>';
+    return '<span class="chip" style="background:' + c + '">' + esc(SEV_LABEL[sev] || sev || '-') + '</span>';
   }
-  const ownerChip = owner => '<span class="chip owner">' + esc(owner || '未定') + '</span>';
+  const ownerChip = owner => '<span class="chip owner">' + esc(OWNER_LABEL[owner || 'tbd'] || owner) + '</span>';
 
   // o: {id, it (talk item or null), label (shown id, optional), title, titleClass, detail, sel, wrap, extra (HTML)}
   function rowHtml(o) {
     const it = o.it || {}, st = it.status || '';
     const chips = (it.severity ? sevChip(it.severity) : '') + (it.owner ? ownerChip(it.owner) : '');
-    const tag = isUnread(it) ? '<span class="new">未読</span>' : isWaiting(it) ? '<span class="new wait">返信待ち</span>' : '';
+    const tag = isUnread(it) ? '<span class="new">' + esc(t('row.unread')) + '</span>' :
+      isWaiting(it) ? '<span class="new wait">' + esc(t('row.waiting')) + '</span>' : '';
     return '<div class="item' + (o.sel ? ' sel' : '') + (o.wrap ? ' wrap' : '') + (DONE.has(st) ? ' done' : '') +
-      (st === '修正済み' ? ' fixed' : '') + '" data-id="' + esc(o.id) + '">' +
+      (st === 'fixed' ? ' fixed' : '') + '" data-id="' + esc(o.id) + '">' +
       '<span class="st ' + stClass(st) + '" title="' + esc(ST_NAME[st] || st) + '">' + esc(ST_MARK[st] || '○') + '</span>' +
       '<div class="main"><div class="line">' + (o.label ? '<span class="id">' + esc(o.label) + '</span>' : '') +
       (chips ? '<span class="chips">' + chips + '</span>' : '') +
@@ -191,7 +191,7 @@
       (o.detail ? '<div class="d">' + esc(o.detail) + '</div>' : '') + '</div>' + tag + (o.extra || '') + '</div>';
   }
   const groupHtml = (label, count, cls, attr) => '<div class="grp-h ' + (cls || '') + '"' + (attr || '') + '><span>' + esc(label) +
-    '</span><small>' + count + ' 件</small></div>';
+    '</span><small>' + esc(t('count', { n: count })) + '</small></div>';
 
   // the row d rows away from id in the list as shown (id null: the first row, or the last when going up)
   function neighbor(id, d) {
@@ -202,37 +202,38 @@
   }
 
   // ------------------------------------------------------------ detail sections and thread
-  // 依頼, figures, 重要度 / 担当 (when present). figBase: '/figures/<review name>/'
+  // the request (ask), figures, severity / owner (when present). figBase: '/figures/<review name>/'
   function askHtml(it, figBase) {
-    let h = it.ask ? '<div class="req">' + esc(it.ask) + '</div>' : '';
+    let h = it.ask ? '<div class="req" data-label="' + esc(t('h.request')) + '">' + esc(it.ask) + '</div>' : '';
     if (it.figures && it.figures.length) h += '<div class="figs">' + it.figures.map(n => '<img src="' + esc(figBase + encodeURIComponent(n)) +
-      '" alt="' + esc(n) + '" title="押すと全画面">').join('') + '</div>';
-    if (it.severity) h += '<div class="row"><span class="k">重要度</span>' + sevChip(it.severity) + '<span class="meaning">' + esc(SEV_MEANING[it.severity] || '') + '</span></div>';
-    if (it.owner) h += '<div class="row"><span class="k">担当</span>' + ownerChip(it.owner) + '<span class="meaning">' + esc(OWNER_MEANING[it.owner] || '') + '</span></div>';
+      '" alt="' + esc(n) + '" title="' + esc(t('fig.title')) + '">').join('') + '</div>';
+    if (it.severity) h += '<div class="row"><span class="k">' + esc(t('k.severity')) + '</span>' + sevChip(it.severity) + '<span class="meaning">' + esc(SEV_MEANING[it.severity] || '') + '</span></div>';
+    if (it.owner) h += '<div class="row"><span class="k">' + esc(t('k.owner')) + '</span>' + ownerChip(it.owner) + '<span class="meaning">' + esc(OWNER_MEANING[it.owner] || '') + '</span></div>';
     return h;
   }
-  // 信号・電流・注意, 理想, 経緯, 内容, 直し方, and 意図 when rationale is given (a string, '' = not written yet)
+  // signal, ideal, background, text, action, and the intent when rationale is given (a string, '' = not written yet)
   function notesHtml(it, rationale) {
+    const sec = (key, cls, text) => '<h4>' + esc(t(key)) + '</h4><div class="' + cls + '">' + esc(text) + '</div>';
     let h = '';
-    if (it.signal) h += '<h4>信号・電流・注意</h4><div class="text">' + esc(it.signal) + '</div>';
-    if (it.ideal) h += '<h4>理想</h4><div class="text">' + esc(it.ideal) + '</div>';
-    if (it.background) h += '<h4>経緯</h4><div class="text bg">' + esc(it.background) + '</div>';
-    if (it.text) h += '<h4>内容</h4><div class="text">' + esc(it.text) + '</div>';
-    if (it.action) h += '<h4>直し方</h4><div class="action">' + esc(it.action) + '</div>';
-    if (rationale !== undefined) h += '<h4>意図</h4><div class="why' + (rationale ? '' : ' none') + '">' +
-      esc(rationale || '（未記入。エージェントが書き込むか、コメントで質問）') + '</div>';
+    if (it.signal) h += sec('h.signal', 'text', it.signal);
+    if (it.ideal) h += sec('h.ideal', 'text', it.ideal);
+    if (it.background) h += sec('h.background', 'text bg', it.background);
+    if (it.text) h += sec('h.text', 'text', it.text);
+    if (it.action) h += sec('h.action', 'action', it.action);
+    if (rationale !== undefined) h += sec('h.intent', 'why' + (rationale ? '' : ' none'), rationale || t('intent.none'));
     return h;
   }
   const shortTime = t => { const m = /^\d{4}-(\d\d)-(\d\d)[ T](\d\d:\d\d)/.exec(t || ''); return m ? m[1] + '/' + m[2] + ' ' + m[3] : (t || ''); };
   // messages, and status changes as small grey lines
   function msgsHtml(thread) {
     return (thread || []).map(m => {
-      const who = m.who === 'agent' ? 'エージェント' : 'あなた', cls = m.who === 'agent' ? 'agent' : 'user';
+      const who = t(m.who === 'agent' ? 'who.agent' : 'who.user'), cls = m.who === 'agent' ? 'agent' : 'user';
       if (m.text == null) return '<div class="stline ' + cls + '">' + esc(shortTime(m.time) + ' ' + who + ': ' + (ST_LINE[m.status || ''] || m.status)) + '</div>';
-      return '<div class="msg ' + cls + '"><small>' + who + '　' + esc(shortTime(m.time)) + '</small>' + esc(m.text) + '</div>';
+      return '<div class="msg ' + cls + '"><small>' + esc(who + t('gap') + shortTime(m.time)) + '</small>' + esc(m.text) + '</div>';
     }).join('');
   }
-  const threadHtml = thread => '<h4>やりとり</h4>' + ((thread || []).length ? msgsHtml(thread) : '<div class="none">まだありません</div>');
+  const threadHtml = thread => '<h4>' + esc(t('h.thread')) + '</h4>' +
+    ((thread || []).length ? msgsHtml(thread) : '<div class="none">' + esc(t('thread.none')) + '</div>');
 
   // ------------------------------------------------------------ figure full screen; a click anywhere or Esc closes it
   function openFigure(src) { const lb = $('lb'); lb.innerHTML = '<img src="' + esc(src) + '">'; lb.hidden = false; }
@@ -264,7 +265,7 @@
       if (!c) return;
       const st = (c[1] && c[1].status) || '';
       $('stBtns').innerHTML = STATUS_BTNS.map(b => '<button data-st="' + b + '" class="' + (st === b ? 'on' : '') + '" title="' +
-        esc(BTN_TITLE[b] + 'もう一度押すと未確認に戻る') + '">' + BTN_LABEL[b] + '</button>').join('');
+        esc(BTN_TITLE[b]) + '">' + esc(BTN_LABEL[b]) + '</button>').join('');
     }
     async function post(btn, body, next) {
       const c = o.current();
@@ -276,10 +277,10 @@
         if (body.comment) { ta.value = ''; store.del(draftKey(page, id)); fit(); }
         o.update(id, r, next);
         const b = body.status !== undefined && document.querySelector('#stBtns button[data-st="' + btn.dataset.st + '"]');
-        notice(b || btn, '送信しました');
-      } catch (e) { notice(btn, 'エラー: ' + e.message); }
+        notice(b || btn, t('sent'));
+      } catch (e) { notice(btn, t('error', { msg: e.message })); }
     }
-    // a status press moves on to the next row; text in the box goes with it (a note on OK, the request for 直して)
+    // a status press moves on to the next row; text in the box goes with it (a note on OK, the request for please fix)
     $('stBtns').addEventListener('click', e => {
       const btn = e.target.closest('button');
       const c = o.current();
@@ -297,12 +298,12 @@
   }
 
   // ------------------------------------------------------------ dockable panels
-  // #work: #upper (#dockL, #center = the drawing, #dockR) over #dockB. The panels [data-panel] (list = 一覧, detail = 詳細)
+  // #work: #upper (#dockL, #center = the drawing, #dockR) over #dockB. The panels [data-panel] (list, detail)
   // move between the docks by their title bar; a dock without panels takes no space. Arrangement and sizes are kept
   // under <prefix>.layout; onChange() after a change (the drawing refits / redraws).
   const DOCKS = ['L', 'R', 'B'];
-  const DOCK_NAME = { L: '左', R: '右', B: '下' };
-  const PANEL_NAME = { list: '一覧', detail: '詳細' };
+  const DOCK_NAME = { L: t('dock.L'), R: t('dock.R'), B: t('dock.B') };
+  const PANEL_NAME = { list: t('panel.list'), detail: t('panel.detail') };
   function docks(prefix, onChange) {
     const key = prefix + '.layout', work = $('work'), upper = $('upper');
     const panels = {};
@@ -348,7 +349,7 @@
           if (i) {                                   // between two panels of one dock
             const s = document.createElement('div');
             s.className = 'psplit';
-            s.title = 'ドラッグで大きさを変更';
+            s.title = t('dock.resize');
             bar(s, ev => {
               const r = el.getBoundingClientRect();
               lay.ratio[d] = clamp(d === 'B' ? (ev.clientX - r.left) / r.width : (ev.clientY - r.top) / r.height, 0.1, 0.9);
@@ -367,7 +368,7 @@
     // splitters between a dock and the drawing
     work.querySelectorAll('.dsplit').forEach(s => {
       const d = s.dataset.dock;
-      s.title = 'ドラッグで大きさを変更';
+      s.title = t('dock.resize');
       bar(s, ev => {
         const r = work.getBoundingClientRect();
         if (d === 'L') lay.size.L = clamp(ev.clientX - r.left, 180, r.width - 240);
@@ -377,7 +378,7 @@
       }, done);
     });
 
-    // moving a panel: the drop zones 左 / 右 / 下 show over the window; in a dock holding the other panel it goes before
+    // moving a panel: the drop zones left / right / bottom show over the window; in a dock holding the other panel it goes before
     // or after that panel by the pointer's position. Esc cancels.
     function zoneOf(name, ev) {
       const r = work.getBoundingClientRect(), u = upper.getBoundingClientRect();
@@ -420,7 +421,8 @@
         hot.hidden = !target;
         if (!target) return;
         place(hot, zoneRect(target, work.getBoundingClientRect(), upper.getBoundingClientRect()));
-        const side = !target.other ? '' : target.d === 'B' ? (target.before ? '（左側）' : '（右側）') : (target.before ? '（上側）' : '（下側）');
+        const side = !target.other ? '' :
+          t('dock.side.' + (target.d === 'B' ? (target.before ? 'left' : 'right') : (target.before ? 'top' : 'bottom')));
         hot.textContent = PANEL_NAME[name] + ' → ' + DOCK_NAME[target.d] + side;
       };
       const finish = commit => {
@@ -442,9 +444,9 @@
       addEventListener('keydown', esc, true);
     }
     for (const [name, p] of Object.entries(panels)) {
-      const t = p.querySelector('.ptitle');
-      t.title = 'ドラッグで移動（左・右・下）';
-      t.addEventListener('pointerdown', e => startMove(name, e));
+      const head = p.querySelector('.ptitle');
+      head.title = t('dock.move');
+      head.addEventListener('pointerdown', e => startMove(name, e));
     }
     apply();
   }
@@ -467,7 +469,8 @@
 
   window.Review = {
     $, esc, store, api, notice, init, connect, markSeen, onInfo, info: () => info, takeRef,
-    STATUS_BTNS, BTN_LABEL, ST_NAME, ST_MARK, DONE, SEVERITIES, SEV_MEANING, OWNER_MEANING, stClass, isWaiting, isUnread,
+    STATUS_BTNS, BTN_LABEL, ST_NAME, ST_MARK, ST_LINE, DONE, SEVERITIES, SEV_LABEL, SEV_MEANING, OWNER_LABEL,
+    OWNER_MEANING, stClass, isWaiting, isUnread,
     filters, sevChip, ownerChip, rowHtml, groupHtml, neighbor, askHtml, notesHtml, msgsHtml, threadHtml,
     openFigure, closeFigure, figureOpen, bindFigures, footer, docks, arrowKeys,
   };

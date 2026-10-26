@@ -22,13 +22,14 @@ import time
 import xml.etree.ElementTree as ET
 
 from . import kicad_paths as kp
+from .i18n import t
 
 CACHE = None     # set by kireview.py: <data>/cache/sch
 GIT_SPEC = re.compile(r'^(?P<repo>.+?)@(?P<ref>[^:@]+):(?P<path>.*)$')
 SKIP_FIELDS = {'Sheetname', 'Sheetfile'}
-FIELD_LABELS = {'Value': '値', 'Footprint': 'フットプリント', 'Datasheet': 'データシート',
-                'Description': '説明', 'Symbol': 'シンボル', 'Sheet': 'シート', 'dnp': 'DNP',
-                'exclude_from_bom': 'BOM 除外', 'exclude_from_board': '基板除外'}
+# fields with a name of their own (i18n field.<name>), in the order the changes list them; other fields come after
+FIELD_ORDER = ('Value', 'Footprint', 'Datasheet', 'Description', 'Symbol', 'Sheet', 'dnp', 'exclude_from_bom',
+               'exclude_from_board')
 PROJECT_DEPTH = 2              # project picker: sub-folder levels searched below the folder
 SKIP_DIRS = ('.git', 'node_modules', '__pycache__')
 REF_COMMITS = 30               # ref picker: latest commits touching the project folder
@@ -367,13 +368,13 @@ def folder_state(folder):
     """How a working folder relates to git, for display: latest (= the last commit touching it) or with uncommitted edits."""
     r = subprocess.run(['git', '-C', folder, 'rev-parse', '--show-toplevel'], capture_output=True)
     if r.returncode:
-        return {'git': False, 'dirty': None, 'last': '', 'text': '最新（今のフォルダ。git 管理外）'}
+        return {'git': False, 'dirty': None, 'last': '', 'text': t('git.outside')}
     try:
         last = git(folder, 'log', '-1', '--format=%cd', '--date=format:%m/%d %H:%M', '--', '.').strip()
         dirty = bool(git(folder, 'status', '--porcelain', '--', '*.kicad_sch', '*.kicad_pro', '*-lib-table').strip())
     except Exception:
-        return {'git': True, 'dirty': None, 'last': '', 'text': '最新（今のフォルダ）'}
-    text = ('最新（今のフォルダ。%s の記録 ＋ 未記録の変更あり）' % last) if dirty else ('最新（今のフォルダ ＝ %s の記録）' % last)
+        return {'git': True, 'dirty': None, 'last': '', 'text': t('git.latest')}
+    text = t('git.dirty' if dirty else 'git.clean', last=last)
     return {'git': True, 'dirty': dirty, 'last': last, 'text': text}
 
 
@@ -393,7 +394,7 @@ def snapshot(sp):
             name = os.path.basename(os.path.normpath(folder))
         when = git(sp['repo'], 'log', '-1', '--format=%cd', '--date=format:%m/%d %H:%M', sha).strip()
         info = {'kind': 'git', 'label': '%s @ %s' % (sp['path'], ref), 'short': '%s@%s' % (name, sp['ref']),
-                'disp': '%s　%s 時点（%s）' % (name, when, sha[:7]),
+                'disp': t('git.at', name=name, when=when, sha=sha[:7]),
                 'sha': sha, 'readonly': True, 'folder': folder, 'ref': sp['ref']}
         src = os.path.join(d, 'src')
         if not os.path.isfile(os.path.join(d, 'meta.json')):
@@ -402,8 +403,8 @@ def snapshot(sp):
             kind = git(sp['repo'], 'cat-file', '-t', '%s:%s' % (sha, sp['path']))
             arch = sp['path'] if kind == 'tree' else os.path.dirname(sp['path']) or '.'
             tar = git(sp['repo'], 'archive', '--format=tar', sha, '--', arch, binary=True)
-            with tarfile.open(fileobj=io.BytesIO(tar)) as t:
-                t.extractall(src, filter='data')
+            with tarfile.open(fileobj=io.BytesIO(tar)) as tf:
+                tf.extractall(src, filter='data')
             for dirpath, _, files in os.walk(src):
                 for n in files:
                     os.chmod(os.path.join(dirpath, n), stat.S_IREAD)
@@ -433,7 +434,7 @@ def snapshot(sp):
             shutil.copy2(os.path.join(base, rel), dst)
     info = {'kind': 'folder', 'label': orig_root.replace('\\', '/'), 'readonly': False, 'open': orig_root,
             'short': os.path.basename(base), 'folder': base,
-            'disp': '%s　%s' % (os.path.basename(base), folder_state(base)['text'])}
+            'disp': t('folder.disp', name=os.path.basename(base), state=folder_state(base)['text'])}
     return d, os.path.join(src, os.path.basename(orig_root)), info
 
 
@@ -750,37 +751,37 @@ def diff(A, B):
         for old, new in rn:
             by_prefix.setdefault(_ref_key(old)[0], []).append('%s→%s' % (old, new))
         first = B['pos'].get(rn[0][1])
-        add('renumbered', 'renumber', first['sheet'] if first else '/', '番号の付け直し: %d 個' % len(rn),
-            '同じ部品（UUID が同じ）を A の番号 → B の番号で対応づけて比べています（A の図の番号は旧番号のまま）。\n' +
-            '\n'.join('  '.join(v) for v in by_prefix.values()), refs=[new for _, new in rn])
+        add('renumbered', 'renumber', first['sheet'] if first else '/', t('renumber.title', n=len(rn)),
+            t('renumber.detail') + '\n' + '\n'.join('  '.join(v) for v in by_prefix.values()), refs=[new for _, new in rn])
     for old, new in A.get('renamed_sheets', []):
-        add('sheet_renamed', 'sheet:' + new, new, 'シート名変更: %s → %s' % (old, new),
-            '同じ部品が多いシートを同じものとして並べる（部品の所属シートは変更として数えない）')
+        add('sheet_renamed', 'sheet:' + new, new, t('sheet.renamed', a=old, b=new), t('sheet.renamed.detail'))
     for s in sorted(set(na['sheets']) - set(nb['sheets'])):
-        add('sheet_removed', 'sheet:' + s, s, 'シート削除: %s' % s)
+        add('sheet_removed', 'sheet:' + s, s, t('sheet.removed', s=s))
     for s in sorted(set(nb['sheets']) - set(na['sheets'])):
-        add('sheet_added', 'sheet:' + s, s, 'シート追加: %s' % s)
+        add('sheet_added', 'sheet:' + s, s, t('sheet.added', s=s))
 
     ca, cb = na['comps'], nb['comps']
     for ref in sorted(set(cb) - set(ca)):
         f = cb[ref]['fields']
         pins = sorted([k[1] for k in nb['pin_net'] if k[0] == ref], key=_pin_key)
         conn = ', '.join('%s: %s' % (p, nb['pin_net'][(ref, p)]) for p in pins)
-        add('comp_added', 'comp:' + ref, cb[ref]['sheet'], '%s 追加  %s' % (ref, f.get('Value', '')),
-            '%s%s\n接続: %s' % (f.get('Footprint', ''), ('  LCSC ' + f['LCSC']) if f.get('LCSC') else '', conn), ref)
+        add('comp_added', 'comp:' + ref, cb[ref]['sheet'], t('comp.added', ref=ref, value=f.get('Value', '')),
+            '%s%s\n%s' % (f.get('Footprint', ''), ('  LCSC ' + f['LCSC']) if f.get('LCSC') else '', t('conn', pins=conn)), ref)
     for ref in sorted(set(ca) - set(cb)):
         f = ca[ref]['fields']
-        add('comp_removed', 'comp:' + ref, ca[ref]['sheet'], '%s 削除  %s' % (ref, f.get('Value', '')), f.get('Footprint', ''), ref)
+        add('comp_removed', 'comp:' + ref, ca[ref]['sheet'], t('comp.removed', ref=ref, value=f.get('Value', '')),
+            f.get('Footprint', ''), ref)
     for ref in sorted(set(ca) & set(cb)):
         fa, fb = dict(ca[ref]['fields']), dict(cb[ref]['fields'])
         fa['Sheet'], fb['Sheet'] = ca[ref]['sheet'], cb[ref]['sheet']
         lines, changed = [], []
-        for k in sorted(set(fa) | set(fb), key=lambda k: (k not in FIELD_LABELS, list(FIELD_LABELS).index(k) if k in FIELD_LABELS else 0, k)):
+        for k in sorted(set(fa) | set(fb), key=lambda k: (k not in FIELD_ORDER, FIELD_ORDER.index(k) if k in FIELD_ORDER else 0, k)):
             if fa.get(k, '') != fb.get(k, ''):
                 changed.append(k)
-                lines.append('%s: %s → %s' % (FIELD_LABELS.get(k, k), fa.get(k, '') or '(なし)', fb.get(k, '') or '(なし)'))
+                lines.append('%s: %s → %s' % (t('field.' + k) if k in FIELD_ORDER else k, fa.get(k, '') or t('none'),
+                                              fb.get(k, '') or t('none')))
         if lines:
-            title = '%s 変更  %s' % (ref, fb.get('Value', ''))
+            title = t('comp.changed', ref=ref, value=fb.get('Value', ''))
             add('comp_changed', 'field:' + ref, cb[ref]['sheet'], title, '\n'.join(lines), ref, fields=changed)
 
     amap = match_nets(na['nets'], nb['nets'], ca, cb)
@@ -790,12 +791,12 @@ def diff(A, B):
             continue
         b_net = nb['pin_net'].get((ref, pin))
         if b_net is None:
-            moved.setdefault(ref, []).append((pin, a_net, '(ピンなし)'))
+            moved.setdefault(ref, []).append((pin, a_net, t('no_pin')))
         elif amap.get(a_net) != b_net:
             moved.setdefault(ref, []).append((pin, a_net, b_net))
     for (ref, pin), b_net in nb['pin_net'].items():
         if ref in ca and (ref, pin) not in na['pin_net']:
-            moved.setdefault(ref, []).append((pin, '(ピンなし)', b_net))
+            moved.setdefault(ref, []).append((pin, t('no_pin'), b_net))
     # pin moves explained by a renamed power symbol / label are folded into one item per label
     labs = label_changes(A, B)
 
@@ -824,20 +825,19 @@ def diff(A, B):
         groups = {}
         for pin, a_net, b_net in rows:
             groups.setdefault((a_net, b_net), []).append(pin)
-        detail = '\n'.join('ピン %s: %s → %s' % (', '.join(p), a, b) for (a, b), p in groups.items())
-        add('pin_moved', 'pin:' + ref, cb[ref]['sheet'], '%s 接続変更  %s' % (ref, cb[ref]['fields'].get('Value', '')), detail, ref)
-    names = {'power': '電源シンボル', 'global': 'グローバルラベル', 'hierarchical': '階層ラベル'}
+        detail = '\n'.join(t('pin.line', pins=', '.join(p), a=a, b=b) for (a, b), p in groups.items())
+        add('pin_moved', 'pin:' + ref, cb[ref]['sheet'], t('pin.moved', ref=ref, value=cb[ref]['fields'].get('Value', '')), detail, ref)
     for l in labs:
         a, b = l['a'], l['b']
         members = [{'ref': r, 'pins': sorted(p, key=_pin_key),
-                    'title': '%s %s  ピン %s' % (r, cb[r]['fields'].get('Value', ''), ', '.join(sorted(p, key=_pin_key))),
+                    'title': t('label.member', ref=r, value=cb[r]['fields'].get('Value', ''), pins=', '.join(sorted(p, key=_pin_key))),
                     'a': [dict(A['pos'][r], ref=r)] if r in A['pos'] else [], 'b': [dict(B['pos'][r], ref=r)] if r in B['pos'] else []}
                    for r, p in sorted(l['members'].items())]
-        what = names[b['kind']] + ('（%s から置き換え）' % names[a['kind']] if a['kind'] != b['kind'] else
-                                    '（置き換え）' if a['uuid'] != b['uuid'] else '')
-        detail = what + ('\nつながる部品: ' + ', '.join(m['title'] for m in members) if members else '')
+        what = t('label.' + b['kind']) + (t('label.replaced_from', kind=t('label.' + a['kind'])) if a['kind'] != b['kind'] else
+                                          t('label.replaced') if a['uuid'] != b['uuid'] else '')
+        detail = what + ('\n' + t('label.members', parts=', '.join(m['title'] for m in members)) if members else '')
         items.append({'kind': 'label_changed', 'key': 'label:%s:%g,%g' % (l['sheet'], b['x'], b['y']), 'sheet': l['sheet'],
-                      'title': 'ラベル変更: %s → %s' % (a['name'], b['name']), 'detail': detail, 'refs': [],
+                      'title': t('label.changed', a=a['name'], b=b['name']), 'detail': detail, 'refs': [],
                       'fields': [], 'mark': True, 'ds': {'a': None, 'b': None}, 'label': [a['name'], b['name']],
                       'members': members, 'folds': sorted('pin:' + m['ref'] for m in members if 'pin:' + m['ref'] in folded),
                       'a': [{'sheet': l['sheet'], 'box': a['box'], 'fields': {}}],
@@ -857,17 +857,17 @@ def diff(A, B):
     for a, b in sorted(amap.items()):
         if a != b and not (is_auto_net(a) and is_auto_net(b)):
             mem = nb['nets'][b]
-            add('net_renamed', 'net:' + b, net_sheet(mem, cb), 'ネット名変更: %s → %s' % (a, b), members_text(mem),
+            add('net_renamed', 'net:' + b, net_sheet(mem, cb), t('net.renamed', a=a, b=b), members_text(mem),
                 refs=sorted({r for r, _ in mem if r in B['pos']}))
     for a in sorted(set(na['nets']) - set(amap)):
         if not is_auto_net(a):
             mem = na['nets'][a]
-            add('net_removed', 'net:' + a, net_sheet(mem, ca), 'ネット削除: %s' % a, members_text(mem),
+            add('net_removed', 'net:' + a, net_sheet(mem, ca), t('net.removed', a=a), members_text(mem),
                 refs=sorted({r for r, _ in mem}))
     for b in sorted(set(nb['nets']) - bmatched):
         if not is_auto_net(b):
             mem = nb['nets'][b]
-            add('net_added', 'net:' + b, net_sheet(mem, cb), 'ネット追加: %s' % b, members_text(mem),
+            add('net_added', 'net:' + b, net_sheet(mem, cb), t('net.added', b=b), members_text(mem),
                 refs=sorted({r for r, _ in mem}))
     return items
 
@@ -891,7 +891,7 @@ def _part_detail(f, pins):
         lines.append(f['Description'])
     pins = sorted(pins, key=lambda r: _pin_key(r[0]))
     if pins:
-        lines.append('接続: ' + ', '.join('%s: %s' % p for p in pins))
+        lines.append(t('conn', pins=', '.join('%s: %s' % p for p in pins)))
     return '\n'.join(l for l in lines if l)
 
 
@@ -918,7 +918,7 @@ def side_parts(S, k, quiet):
         c = net['comps'][ref]
         f = c['fields']
         items.append({'kind': 'part', 'key': 'part:%s:%s' % (k, ref), 'sheet': c['sheet'],
-                      'title': '%s %s%s  %s' % (k.upper(), ref, '（旧 %s）' % c['old_ref'] if c.get('old_ref') else '', f.get('Value', '')),
+                      'title': '%s %s%s  %s' % (k.upper(), ref, t('part.old', ref=c['old_ref']) if c.get('old_ref') else '', f.get('Value', '')),
                       'detail': _part_detail(f, pins_of.get(ref, [])), 'refs': [ref], 'fields': [], 'mark': True,
                       'ds': {k: datasheet_link(S, k, ref), other: None},
                       k: [dict(S['pos'][ref], ref=ref)] if ref in S['pos'] else [], other: [],
@@ -1027,7 +1027,7 @@ class Diff:
     def compare(self, spec_a, spec_b):
         """Switch the sides (B empty = one design); on failure the previous pair stays loaded."""
         if not spec_a:
-            raise ValueError('A を指定してください')
+            raise ValueError(t('need_a'))
         old = self.specs
         self.specs = {'a': spec_a, 'b': spec_b or None}
         try:

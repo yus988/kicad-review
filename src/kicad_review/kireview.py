@@ -1,7 +1,7 @@
 """kicad-review: review KiCad 10 schematics and boards with a coding agent, on one local page.
 
   kicad-review [A [B]] [BOARD.kicad_pcb] [--board BOARD] [--data DIR] [--port 8199] [--no-open]
-               [--kicad-bin DIR] [--rationale FILE] [--no-diff]
+               [--kicad-bin DIR] [--rationale FILE] [--no-diff] [--lang en|ja]
   kicad-review wait | reply | ack | show ...      (talkpage's commands on this server; see README.md)
   kicad-review put --file items.json              (board items, POST /api/board/item each)
   kicad-review group --file groups.json           (schematic groups, POST /api/sch/group each)
@@ -10,6 +10,8 @@
 A / B: the schematic to review (a project folder, a root .kicad_sch or <repo>@<ref>:<path>); with B the changes from
 A to B are listed. BOARD: a .kicad_pcb to review. Either can be chosen in the page too. /sch is the schematic page,
 /board the board page. <data> (default: the current folder) holds reviews/ (the review notes), cache/ and figures/.
+--lang: the language of the pages and of the text the server makes (default: $KICAD_REVIEW_LANG, else the OS
+language: ja when it is Japanese, else en).
 The work is done in kireview_sch.py, kireview_board.py and kireview_store.py; the comment threads, the agent's wait
 and replies are talkpage's (the talkpage package, routes /_talk/api/).
 """
@@ -25,6 +27,7 @@ import webbrowser
 
 from . import __version__
 
+from . import i18n
 from . import kicad_paths as kp
 from . import kireview_board as kb
 from . import kireview_sch as kc
@@ -34,7 +37,7 @@ tp = ks.tp
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = 8199
 PAGES = {'/sch': 'sch.html', '/board': 'board.html'}
-STATIC = {'/review.js': 'text/javascript', '/review.css': 'text/css'}
+STATIC = {'/i18n.js': 'text/javascript', '/review.js': 'text/javascript', '/review.css': 'text/css'}
 FIGURE_TYPES = {'.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg'}
 TALK_CMDS = ('wait', 'reply', 'ack', 'show')
 NAME = re.compile(r'^[\w.@+-]+$')     # review names (board stems, schematic slugs) and figure files
@@ -52,11 +55,14 @@ def page_stamp():
 
 
 class App:
-    """What the server holds: the review stores (talkpage's Talk), the board and the schematic under review."""
+    """What the server holds: the review stores (talkpage's Talk), the board and the schematic under review. lang
+    ('en' / 'ja') is the language of the pages and of the server's text (i18n, set here once)."""
 
-    def __init__(self, data, kicad_bin, port, seed=None):
+    def __init__(self, data, kicad_bin, port, seed=None, lang='en'):
         self.data, self.kicad_bin, self.port = data, kicad_bin, port
-        self.talk = tp.Talk(None, port)
+        self.lang = lang if lang in i18n.LANGS else 'en'
+        i18n.set_lang(self.lang)
+        self.talk = tp.Talk(None, port, self.lang)
         self.cond = self.talk.cond
         self.board, self.board_store, self.sch = None, None, None
         self.seed = seed
@@ -126,7 +132,7 @@ class App:
                    'title': sd['a']['short'] if st['single'] else sd['a']['short'] + ' → ' + sd['b']['short']}
         board = {'page': self.board_store.page, 'stem': self.board.stem,
                  'path': self.board.path.replace('\\', '/')} if self.board else None
-        return {'tool': 'kireview', 'port': self.port, 'data': self.data.replace('\\', '/'), 'presence': presence,
+        return {'tool': 'kireview', 'port': self.port, 'lang': self.lang, 'data': self.data.replace('\\', '/'), 'presence': presence,
                 'page_stamp': page_stamp(), 'sch': sch, 'board': board,
                 'board_hint': self.sch.board_hint() if self.sch and not self.board else None}
 
@@ -147,12 +153,12 @@ class App:
         if s.kind == 'board':
             if iid not in s.data['items']:
                 raise ValueError('unknown item: %s (board items are made with POST /api/board/item)' % iid)
-            ks.check_fields('board', body.get('fields'), s.data['items'][iid])
+            ks.check_fields('board', ks.norm_fields(body.get('fields')), s.data['items'][iid])
             body.pop('title', None)         # a board item's title is its own
         else:
             if not isinstance(iid, str) or not (iid in s.data['items'] or self.sch and self.sch.is_known(s, iid)):
                 raise ValueError('unknown item key: %s' % iid)
-            ks.check_fields('sch', body.get('fields'))
+            ks.check_fields('sch', ks.norm_fields(body.get('fields')))
         if path == '/_talk/api/user':      # a status alone wakes the agent only when it asks for something
             body['notify'] = body.get('status') in ks.ASKING
 
@@ -285,8 +291,8 @@ class App:
             n += 1
         iid = 'Q%d' % n
         first = comment.splitlines()[0]
-        s.data['items'][iid] = {'title': first[:60] + ('…' if len(first) > 60 else ''), 'severity': '情報',
-                                'owner': '未定', 'sides': [side], 'x': round(x, 3), 'y': round(y, 3), 'r': 1.0,
+        s.data['items'][iid] = {'title': first[:60] + ('…' if len(first) > 60 else ''), 'severity': 'info',
+                                'owner': 'tbd', 'sides': [side], 'x': round(x, 3), 'y': round(y, 3), 'r': 1.0,
                                 'refs': [ref] if ref else [], 'near': near, 'status': '', 'thread': [],
                                 'user_rev': 0, 'agent_rev': 0, 'seen_rev': 0}
         it = s.user(iid, comment=comment)
@@ -331,7 +337,10 @@ class Handler(tp.Handler):
         name = PAGES.get(path) or (path.lstrip('/') if path in STATIC else None)
         if name:
             with open(os.path.join(HERE, name), 'rb') as f:
-                return self._send(200, f.read(), 'text/html' if path in PAGES else STATIC[path])
+                body = f.read()
+            if path in PAGES:                  # the page in the server's language (i18n.js reads <html lang>)
+                body = body.replace(b'<html lang="ja">', b'<html lang="%s">' % self.app.lang.encode(), 1)
+            return self._send(200, body, 'text/html' if path in PAGES else STATIC[path])
         q = urllib.parse.parse_qs(query)
         r = self.app.talk.get(path, q) if path.startswith('/_talk/api/') else self.app.get(path, q)
         self._send(*r) if r else self._send(404, {'error': 'not found'})
@@ -382,7 +391,7 @@ def serve(args):
     if args.rationale:
         with open(args.rationale, encoding='utf-8') as f:
             seed = json.load(f)
-    app = App(data, args.kicad_bin, args.port, seed)
+    app = App(data, args.kicad_bin, args.port, seed, args.lang or tp.default_lang('KICAD_REVIEW_LANG'))
     Handler.app = app
     try:
         srv = tp.Server(('127.0.0.1', args.port), Handler)
@@ -443,6 +452,8 @@ def main():
     p.add_argument('--rationale', help='JSON file {item key: intent} to seed the schematic review (kept if already set)')
     p.add_argument('--version', action='version', version='kicad-review ' + __version__)
     p.add_argument('--no-diff', action='store_true', help='two schematics: only put them side by side (saved in the review)')
+    p.add_argument('--lang', choices=i18n.LANGS,
+                   help='language of the pages (default: $KICAD_REVIEW_LANG, else ja for a Japanese OS, else en)')
     serve(p.parse_args())
 
 

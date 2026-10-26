@@ -2,6 +2,7 @@
 python -m unittest discover tests"""
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -10,6 +11,7 @@ import unittest
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 sys.path.insert(0, os.path.join(ROOT, 'src'))     # run from a clone without installing
+from kicad_review import i18n  # noqa: E402
 from kicad_review import kicad_paths as kp  # noqa: E402
 from kicad_review import kireview as kr  # noqa: E402
 from kicad_review import renumber_review as rr  # noqa: E402
@@ -75,6 +77,15 @@ class ExampleTest(unittest.TestCase):
         for k in ('comp:R2', 'comp:D2', 'field:R1', 'field:C1', 'net:/LED1_A', 'net:/STATUS_A'):
             self.assertIn(k, keys)
         self.assertFalse(any(k.startswith('comp:') and k[5:] in ('R1', 'C1', 'D1', 'J1') for k in keys))
+        title = {it['key']: it['title'] for it in st['items']}
+        self.assertTrue(title['comp:R2'].startswith('R2 added'), title['comp:R2'])      # the server runs in English
+        jp = re.compile(r'[\u3040-\u30ff\u4e00-\u9fff\uff00-\uffef]')
+        self.assertFalse([t for it in st['items'] for t in (it['title'], it['detail']) if jp.search(t)])
+        ja = kr.App(self.data, BIN, 0, lang='ja')                                       # the same exports, in Japanese
+        self.addCleanup(i18n.set_lang, 'en')
+        st_ja = ja.open_sch(os.path.join(EX, 'blinky_v1'), os.path.join(EX, 'blinky_v2'))
+        self.assertTrue({it['key']: it['title'] for it in st_ja['items']}['comp:R2'].startswith('R2 追加'))
+        i18n.set_lang('en')
         st = self.app.open_sch(os.path.join(EX, 'blinky_v2'), None)                  # one design: every part
         self.assertEqual(sorted(it['key'] for it in st['items']),
                          ['comp:C1', 'comp:D1', 'comp:D2', 'comp:J1', 'comp:R1', 'comp:R2'])

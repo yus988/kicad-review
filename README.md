@@ -15,9 +15,18 @@ Review KiCad schematics and boards **together with a coding agent** (Claude Code
 
 ![Board review: review items on the board, the selected one pointing at the unconnected pad](docs/screenshots/board.webp)
 
-> **Language:** the page UI and the stored status / severity values are in **Japanese** for now
-> (e.g. `修正済み` = fixed, `修正を依頼` = please fix, `このまま` = OK; severities `必須` must, `推奨` should,
-> `任意` optional, `情報` info). The full reference is in [README.ja.md](README.ja.md).
+> **Language:** the pages are in English or Japanese: `--lang en|ja`, by default `$KICAD_REVIEW_LANG`, else
+> Japanese when the OS language is Japanese, else English. The review files store English codes in both cases:
+>
+> | Field | Codes |
+> |---|---|
+> | `status` | `""` (not reviewed), `fixed`, `fix` (⚑ please fix), `ok` (✓ OK); `question`, `self-fix` from older reviews |
+> | `severity` | `must`, `should`, `could` (optional), `info` |
+> | `owner` | `human`, `agent`, `tbd` (undecided) |
+>
+> The Japanese values of earlier versions (`修正済み`, `修正を依頼`, `このまま`, `必須`, `推奨`, `任意`, `情報`, `人`,
+> `エージェント`, `未定`, …) are still accepted everywhere and read as these codes. The full reference is in
+> [README.ja.md](README.ja.md).
 
 ## Requirements
 
@@ -59,7 +68,7 @@ kicad-review put --file examples/review/board-items.json
 
 ```
 kicad-review [A [B]] [BOARD.kicad_pcb] [--data DIR] [--port 8199] [--no-open] [--kicad-bin DIR]
-             [--rationale FILE] [--no-diff]
+             [--rationale FILE] [--no-diff] [--lang en|ja]
 ```
 
 - **A / B**: a KiCad project folder, a root `.kicad_sch`, or `<repo>@<ref>:<path in the repo>` (a tag, branch, commit
@@ -79,7 +88,7 @@ the skill in [`skills/kicad-review/SKILL.md`](skills/kicad-review/SKILL.md). The
    related changes: `kicad-review group --file groups.json`.
 2. The agent runs `kicad-review wait` **in the background** (Claude Code: Bash with `run_in_background`). It exits
    when you comment or press ⚑, which wakes the agent.
-3. The agent answers: `kicad-review reply --page board --id B1 --text -` (text on stdin), with `--status 修正済み`
+3. The agent answers: `kicad-review reply --page board --id B1 --text -` (text on stdin), with `--status fixed`
    when it fixed the item, or `--fields @fields.json` to add the intent (`rationale`) or a request (`severity`,
    `owner`, `ask`, …) to a schematic item. `kicad-review ack` marks items as read without replying.
 4. It starts `wait` again. `kicad-review show` prints the state of every item.

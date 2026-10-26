@@ -1,6 +1,7 @@
 /* talkpage client. Elements marked data-talk="<id>" get status buttons and a comment thread kept by the talkpage
    server (talkpage.py, in <page>.talk.json beside the page); the agent's replies appear in place. Elements marked
-   data-copy get a copy button. Loaded from the server at /_talk/talkpage.js; see README.md. */
+   data-copy get a copy button. Loaded from the server at /_talk/talkpage.js; see README.md. The text is English or
+   Japanese by the page's <html lang> (else the browser's language). */
 (function () {
   'use strict';
   var API = '/_talk/api/';
@@ -9,13 +10,82 @@
   if (!page || /\/$/.test(page)) page += 'index.html';
   var TONES = { OK: 'ok', '了承': 'ok', '済': 'ok', '完了': 'ok', NG: 'ng', '要修正': 'ng',
                 '飛ばし': 'skip', 'スキップ': 'skip', '対象外': 'skip' };
-  var PRESENCE = {
-    listening: ['エージェント 受付中', 'チェックとコメントは、すぐエージェントに届きます'],
-    working: ['エージェント 対応中', 'エージェントが届いた書き込みを処理しています。この間の書き込みも保存され、次に受け付けたときに届きます'],
-    absent: ['エージェント 待ち受けなし', '書き込みは保存されます。エージェントが待ち受けを始めたときに届きます'],
-    down: ['サーバー未接続', 'talkpage のサーバーにつながりません。この間の書き込みは保存されません']
+  var TEXT = {
+    en: {
+      'presence.listening': 'Agent: listening',
+      'presence.listening.title': 'Statuses and comments reach the agent right away',
+      'presence.working': 'Agent: working',
+      'presence.working.title': 'The agent is working on what it received. What you write now is saved and reaches it when it listens again',
+      'presence.absent': 'Agent: not waiting',
+      'presence.absent.title': 'What you write is saved and reaches the agent when it starts waiting',
+      'presence.down': 'Server offline',
+      'presence.down.title': 'Cannot reach the talkpage server. What you write now is not saved',
+      'mark.new': 'New reply',
+      'mark.wait': 'Unread by agent',
+      'mark.read': 'Read by agent',
+      'mark.err': 'Not saved',
+      'mark.wait.title': 'The agent has not read what you wrote yet',
+      'comment': 'Comment',
+      'comment.ph': 'Comment (Ctrl+Enter sends)',
+      'send': 'Send',
+      'who.agent': 'Agent',
+      'who.user': 'You',
+      'cleared': 'cleared the status',
+      'dock.unread': 'New replies {n}',
+      'dock.unread.title': 'Go to an item with a new reply from the agent',
+      'dock.waiting': 'Unread by agent {n}',
+      'dock.waiting.title': 'Go to an item the agent has not read yet',
+      'dock.progress': 'Done {done} / {all}',
+      'dock.progress.title': 'Items with a status / items that take one',
+      'paren': ' ({x})',
+      'list.failed': 'Could not load the items: {msg}',
+      'copy': 'Copy',
+      'copied': 'Copied',
+      'copy.failed': 'Copy failed'
+    },
+    ja: {
+      'presence.listening': 'エージェント 受付中',
+      'presence.listening.title': 'チェックとコメントは、すぐエージェントに届きます',
+      'presence.working': 'エージェント 対応中',
+      'presence.working.title': 'エージェントが届いた書き込みを処理しています。この間の書き込みも保存され、次に受け付けたときに届きます',
+      'presence.absent': 'エージェント 待ち受けなし',
+      'presence.absent.title': '書き込みは保存されます。エージェントが待ち受けを始めたときに届きます',
+      'presence.down': 'サーバー未接続',
+      'presence.down.title': 'talkpage のサーバーにつながりません。この間の書き込みは保存されません',
+      'mark.new': '新しい返信',
+      'mark.wait': 'エージェント未読',
+      'mark.read': 'エージェント既読',
+      'mark.err': '保存の失敗',
+      'mark.wait.title': 'エージェントがまだ読んでいない書き込みがあります',
+      'comment': 'コメント',
+      'comment.ph': 'コメント（Ctrl+Enter で送信）',
+      'send': '送信',
+      'who.agent': 'エージェント',
+      'who.user': 'あなた',
+      'cleared': '状態を解除',
+      'dock.unread': '新しい返信 {n}',
+      'dock.unread.title': 'エージェントの新しい返信がある項目へ移動',
+      'dock.waiting': 'エージェント未読 {n}',
+      'dock.waiting.title': 'エージェントがまだ読んでいない項目へ移動',
+      'dock.progress': '記入 {done} / {all}',
+      'dock.progress.title': '状態を付けた項目 / 状態を付けられる項目',
+      'paren': '（{x}）',
+      'list.failed': '項目の読み込みの失敗: {msg}',
+      'copy': 'コピー',
+      'copied': 'コピーしました',
+      'copy.failed': 'コピーの失敗'
+    }
   };
-  var MARKS = { 'new': '新しい返信', wait: 'エージェント未読', read: 'エージェント既読', err: '保存の失敗' };
+  var LANG = /^ja\b/i.test(html.getAttribute('lang') || navigator.language || '') ? 'ja' : 'en';
+  function tr(key, vars) {
+    var s = TEXT[LANG][key] != null ? TEXT[LANG][key] : TEXT.en[key];
+    return vars ? s.replace(/\{(\w+)\}/g, function (m, k) { return vars[k] != null ? String(vars[k]) : m; }) : s;
+  }
+  var PRESENCE = {};
+  ['listening', 'working', 'absent', 'down'].forEach(function (p) {
+    PRESENCE[p] = [tr('presence.' + p), tr('presence.' + p + '.title')];
+  });
+  var MARKS = { 'new': tr('mark.new'), wait: tr('mark.wait'), read: tr('mark.read'), err: tr('mark.err') };
   var items = {};          // id -> item as the server keeps it
   var ui = {};             // id -> the item's elements and settings
   var order = [];          // declared ids in document order
@@ -80,7 +150,7 @@
       u.btns[s.name] = b;
       bar.appendChild(b);
     });
-    u.cbtn = button('talk-cbtn', 'コメント');
+    u.cbtn = button('talk-cbtn', tr('comment'));
     u.cbtn.setAttribute('aria-expanded', 'false');
     u.count = el('span', 'talk-count');
     u.cbtn.appendChild(u.count);
@@ -94,8 +164,8 @@
     var form = el('div', 'talk-form');
     u.ta = el('textarea');
     u.ta.rows = 2;
-    u.ta.placeholder = 'コメント（Ctrl+Enter で送信）';
-    u.send = button('talk-send', '送信');
+    u.ta.placeholder = tr('comment.ph');
+    u.send = button('talk-send', tr('send'));
     form.appendChild(u.ta);
     form.appendChild(u.send);
     u.thread.appendChild(u.list);
@@ -146,7 +216,7 @@
   function mark(u, m) {
     u.mark.textContent = MARKS[m] || '';
     u.mark.setAttribute('data-m', m);
-    u.mark.title = m === 'wait' ? 'エージェントがまだ読んでいない書き込みがあります' : '';
+    u.mark.title = m === 'wait' ? tr('mark.wait.title') : '';
   }
 
   function paint(u, s) {
@@ -169,8 +239,8 @@
   }
 
   function entry(m) {
-    var who = m.who === 'agent' ? 'エージェント' : 'あなた';
-    if (!m.text) return el('div', 'talk-ev', when(m.time) + '  ' + who + ': ' + (m.status || '状態を解除'));
+    var who = tr(m.who === 'agent' ? 'who.agent' : 'who.user');
+    if (!m.text) return el('div', 'talk-ev', when(m.time) + '  ' + who + ': ' + (m.status || tr('cleared')));
     var box = el('div', 'talk-msg talk-' + (m.who === 'agent' ? 'agent' : 'user'));
     box.appendChild(el('span', 'talk-who', who + '  ' + when(m.time)));
     var body = el('div', 'talk-text');
@@ -217,11 +287,11 @@
     var d = el('div', 'talk-dock');
     d.setAttribute('role', 'status');
     dock.unread = button('talk-jump', '');
-    dock.unread.title = 'エージェントの新しい返信がある項目へ移動';
+    dock.unread.title = tr('dock.unread.title');
     dock.waiting = button('talk-jump', '');
-    dock.waiting.title = 'エージェントがまだ読んでいない項目へ移動';
+    dock.waiting.title = tr('dock.waiting.title');
     dock.progress = el('span', 'talk-progress');
-    dock.progress.title = '状態を付けた項目 / 状態を付けられる項目';
+    dock.progress.title = tr('dock.progress.title');
     dock.presence = el('span', 'talk-presence');
     [dock.unread, dock.waiting, dock.progress, dock.presence].forEach(function (x) { d.appendChild(x); });
     dock.unread.addEventListener('click', function () { jump(function (u) { return u.unread; }, true); });
@@ -238,13 +308,13 @@
       if (u.states.length) { n.all++; if (items[id] && items[id].status) n.done++; }
     });
     dock.unread.hidden = !n.unread;
-    dock.unread.textContent = '新しい返信 ' + n.unread;
+    dock.unread.textContent = tr('dock.unread', { n: n.unread });
     dock.waiting.hidden = !n.waiting;
-    dock.waiting.textContent = 'エージェント未読 ' + n.waiting;
-    dock.progress.textContent = n.all ? '記入 ' + n.done + ' / ' + n.all : '';
+    dock.waiting.textContent = tr('dock.waiting', { n: n.waiting });
+    dock.progress.textContent = n.all ? tr('dock.progress', { done: n.done, all: n.all }) : '';
     var p = PRESENCE[presence] || PRESENCE.absent;
     dock.presence.textContent = p[0];
-    dock.presence.title = p[1] + (presence === 'down' && downWhy ? '（' + downWhy + '）' : '');
+    dock.presence.title = p[1] + (presence === 'down' && downWhy ? tr('paren', { x: downWhy }) : '');
     dock.presence.setAttribute('data-p', presence);
     document.title = (n.unread ? '(' + n.unread + ') ' : '') + baseTitle;
   }
@@ -311,7 +381,7 @@
           }
           box.appendChild(card);
         });
-      }).catch(function (e) { box.appendChild(el('p', 'talk-error', '項目の読み込みの失敗: ' + e.message)); });
+      }).catch(function (e) { box.appendChild(el('p', 'talk-error', tr('list.failed', { msg: e.message }))); });
     }));
   }
 
@@ -339,7 +409,7 @@
       var fixed = box.getAttribute('data-copy') || null;
       var src = fixed ? null : box.querySelector('code, pre');
       if (!fixed && !src) fixed = box.textContent.trim();
-      var b = button('talk-copy-btn', 'コピー');
+      var b = button('talk-copy-btn', tr('copy'));
       var note = el('span', 'talk-copied');
       note.setAttribute('aria-live', 'polite');
       box.classList.add('talk-copy');
@@ -347,10 +417,10 @@
       box.appendChild(note);
       b.addEventListener('click', function () {
         copyText(fixed != null ? fixed : src.textContent).then(function () {
-          note.textContent = 'コピーしました';
+          note.textContent = tr('copied');
           clearTimeout(note.timer);
           note.timer = setTimeout(function () { note.textContent = ''; }, 1500);
-        }, function () { note.textContent = 'コピーの失敗'; });
+        }, function () { note.textContent = tr('copy.failed'); });
       });
     });
   }

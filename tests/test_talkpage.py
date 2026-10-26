@@ -135,6 +135,10 @@ class HttpTest(unittest.TestCase):
         self.assertEqual(self.req('/%2e%2e/x.html')[0], 404)
         self.assertEqual(self.req('/.git/config')[0], 404)
         self.assertEqual(self.req('/_talk/__init__.py')[0], 404)
+        code, body = self.req('/_talk/')
+        self.assertIn(b'<html lang="en">', body)                    # the index page in the server's language
+        self.assertIn(b'Only pages with a state are listed', body)
+        self.assertEqual(self.req('/_talk/api/info')[1]['lang'], 'en')
 
     def test_2_guards(self):
         self.assertEqual(self.req('/_talk/api/info', headers={'Host': 'evil.example:%d' % self.port})[0], 403)

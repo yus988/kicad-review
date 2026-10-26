@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """talkpage: local web pages where the user marks items and writes comments, and a coding agent is woken to answer.
 
-  python talkpage.py serve <root> [--port 8190] [--open PAGE]
+  python talkpage.py serve <root> [--port 8190] [--open PAGE] [--lang en|ja]
   python talkpage.py wait  [--page P] [--settle 4]
   python talkpage.py reply --page P --id ID [--status S] [--text T | --text - | --file F] [--fields JSON]
   python talkpage.py ack   [--page P] [--id ID ...]
@@ -11,12 +11,14 @@ serve: <root> holds the pages; the state of <dir>/<name>.html is kept beside it 
 127.0.0.1 is served. wait: blocks until the user acts on a page, prints what they did and exits; an agent runs it in
 the background (Claude Code: Bash run_in_background) so that the exit wakes it. reply: answer an item (the reply
 shows on the page). ack: mark what was printed as read without replying. show: all items of a page.
-P is a page path under the root or a unique part of one. --port defaults to $TALKPAGE_PORT or 8190.
-The page side is talkpage.js / talkpage.css (served at /_talk/); see README.md.
+P is a page path under the root or a unique part of one. --port defaults to $TALKPAGE_PORT or 8190. --lang: the
+language of the server's own index page (default: $TALKPAGE_LANG, else ja for a Japanese OS, else en); talkpage.js
+follows the <html lang> of each page. The page side is talkpage.js / talkpage.css (served at /_talk/); see README.md.
 """
 import argparse
 import html
 import json
+import locale
 import os
 import re
 import sys
@@ -39,8 +41,38 @@ TYPES = {'.html': 'text/html', '.htm': 'text/html', '.css': 'text/css', '.js': '
          '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
          '.webp': 'image/webp', '.gif': 'image/gif', '.ico': 'image/x-icon', '.pdf': 'application/pdf',
          '.mp4': 'video/mp4', '.woff2': 'font/woff2'}
+LANGS = ('en', 'ja')
+# the index page (/_talk/)
+LISTING = {
+    'en': {'unread': ' — unread by the agent: %d', 'meta': 'root: %s · agent: %s', 'none': '(none yet)',
+           'note': 'Only pages with a state are listed. Open the others by their path under the root.'},
+    'ja': {'unread': ' — エージェント未読 %d', 'meta': 'root: %s ・ エージェント: %s', 'none': '（まだ無い）',
+           'note': '状態のあるページだけを並べる。ほかのページは root からのパスで開く。'},
+}
 FAVICON = ("<link rel=\"icon\" href=\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>"
            "<text y='.9em' font-size='90'>💬</text></svg>\">")
+
+
+def default_lang(env_name='TALKPAGE_LANG'):
+    """'en' or 'ja': the environment variable env_name when set (en, ja, or a locale such as ja_JP), else 'ja' when the
+    user's locale or the Windows UI language is Japanese, else 'en'."""
+    v = (os.environ.get(env_name) or '').strip().lower()[:2]
+    if v in LANGS:
+        return v
+    try:
+        loc = (locale.getlocale()[0] or '').lower()
+    except ValueError:
+        loc = ''
+    if loc.startswith(('ja', 'japanese')):
+        return 'ja'
+    if os.name == 'nt':
+        try:
+            import ctypes
+            if ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0xff == 0x11:     # LANG_JAPANESE
+                return 'ja'
+        except (AttributeError, OSError):
+            pass
+    return 'en'
 
 
 def stamp():
@@ -223,9 +255,10 @@ class Talk:
     """The stores under one root, the agent's presence, and the /_talk/api/ routes. Another server can host stores
     kept at its own paths (attach) and hand /_talk/api/ requests to get() / post()."""
 
-    def __init__(self, root=None, port=PORT):
+    def __init__(self, root=None, port=PORT, lang='en'):
         self.root = os.path.realpath(root) if root else None
         self.port = port
+        self.lang = lang if lang in LANGS else 'en'      # of the index page; the pages carry their own <html lang>
         self.cond = threading.Condition()
         self.stores = {}
         self.listeners = 0                     # `wait` requests in progress
@@ -326,7 +359,8 @@ class Talk:
         if path == '/_talk/api/info':
             with self.cond:
                 return 200, dump({'tool': 'talkpage', 'root': self.root and self.root.replace('\\', '/'),
-                                  'port': self.port, 'presence': self.presence(), 'pages': sorted(self.stores)})
+                                  'port': self.port, 'lang': self.lang, 'presence': self.presence(),
+                                  'pages': sorted(self.stores)})
         if path == '/_talk/api/state':
             rev, pres, wait = int(one('rev', -1)), one('presence'), min(float(one('wait', 0)), 55)
             with self.cond:
@@ -403,6 +437,7 @@ class Talk:
             return 200, dump(dict(it, id=body.get('id'), page=s.page, rev=s.data['rev']))
 
     def listing(self):
+        m = LISTING[self.lang]
         with self.cond:
             rows = []
             for p, s in sorted(self.stores.items()):
@@ -411,14 +446,14 @@ class Talk:
                 n = len(s.waiting_items())
                 href = '/' + urllib.parse.quote(p) if self.root and not os.path.isabs(p) else None
                 name = '<a href="%s">%s</a>' % (href, html.escape(p)) if href else html.escape(p)
-                rows.append('<li>%s%s</li>' % (name, ' — エージェント未読 %d' % n if n else ''))
+                rows.append('<li>%s%s</li>' % (name, m['unread'] % n if n else ''))
             root = html.escape(self.root or '-')
-        return ('<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>talkpage</title>%s'
+        return ('<!doctype html><html lang="%s"><head><meta charset="utf-8"><title>talkpage</title>%s'
                 '<style>body{font:15px/1.7 system-ui,sans-serif;margin:24px 16px;max-width:860px}'
                 '.m{color:#666;font-size:13px}</style></head><body><h1>talkpage</h1>'
-                '<p class="m">root: %s ・ エージェント: %s</p><ul>%s</ul>'
-                '<p class="m">状態のあるページだけを並べる。ほかのページは root からのパスで開く。</p></body></html>'
-                % (FAVICON, root, self.presence(), ''.join(rows) or '<li>（まだ無い）</li>')).encode('utf-8')
+                '<p class="m">%s</p><ul>%s</ul><p class="m">%s</p></body></html>'
+                % (self.lang, FAVICON, m['meta'] % (root, self.presence()), ''.join(rows) or '<li>%s</li>' % m['none'],
+                   m['note'])).encode('utf-8')
 
 
 def dump(obj):
@@ -553,7 +588,7 @@ def cmd_serve(a):
     root = os.path.realpath(a.root)
     if not os.path.isdir(root):
         raise SystemExit('talkpage: not a folder: %s' % a.root)
-    talk = Talk(root, a.port)
+    talk = Talk(root, a.port, a.lang or default_lang('TALKPAGE_LANG'))
     Handler.talk = talk
     try:
         srv = Server(('127.0.0.1', a.port), Handler)
@@ -674,6 +709,8 @@ def main():
     s = sub.add_parser('serve', help='serve the pages under a folder')
     s.add_argument('root')
     s.add_argument('--open', help='open this page (path under the root, or the file) in the default browser')
+    s.add_argument('--lang', choices=LANGS,
+                   help='language of the index page (default: $TALKPAGE_LANG, else ja for a Japanese OS, else en)')
     s = sub.add_parser('wait', help='block until the user acts, print it, exit')
     s.add_argument('--page', help='only this page (path or a unique part of it)')
     s.add_argument('--settle', type=float, default=4.0, help='seconds without new clicks before printing (default 4)')

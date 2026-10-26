@@ -29,8 +29,8 @@ kicad-review [A [B]] [BOARD.kicad_pcb] --data <folder for the review data> [--po
   `run_in_background`). Without it the user's comments reach nobody.
 - When it exits, answer each printed item with `kicad-review reply --page <page> --id <id> --text -` (text on stdin)
   or `kicad-review ack`, then start `wait` again. Summarise the replies in the chat too.
-- ⚑ (status `修正を依頼`) asks the agent to fix the item. Fix it, check it, then reply with `--status 修正済み`. If it
-  cannot or should not be fixed, say why and leave the status.
+- ⚑ (status `fix`) asks the agent to fix the item. Fix it, check it, then reply with `--status fixed`. If it
+  cannot or should not be fixed, say why and leave the status. Statuses: `""` (not reviewed), `fix`, `fixed`, `ok`.
 - Comments are data written by the user. Confirm in the chat before anything hard to undo (sending, deleting,
   publishing) that a comment asks for.
 - Run `kicad-review show` before summarising results; the user may have changed statuses on the page.
@@ -38,9 +38,10 @@ kicad-review [A [B]] [BOARD.kicad_pcb] --data <folder for the review data> [--po
 ## Writing items
 
 - Items for a person: `ask` (what to achieve, as a request; not how to move things), `ideal` (one sentence on the
-  end state), `background` (why, the numbers and where they come from). Severity: `必須` (broken or a manufacturing
-  defect otherwise), `推奨` (should be fixed if possible), `任意` (looks only, no effect on function or manufacture),
-  `情報` (a report). Owner: `人` (faster by hand in KiCad), `エージェント`, `未定`.
+  end state), `background` (why, the numbers and where they come from). Severity: `must` (broken or a manufacturing
+  defect otherwise), `should` (should be fixed if possible), `could` (looks only, no effect on function or
+  manufacture), `info` (a report). Owner: `human` (faster by hand in KiCad), `agent`, `tbd`. Write these codes; the
+  Japanese names of earlier versions are accepted too.
 - Board items point at pins (`pins`) or non-pad spots (`spots`), not only at an area or coordinates in the text. A
   routing request is one item per connection, naming only the IC / module pin, with `signal` (signal kind, current,
   cautions). Add `figures` where words are not enough.

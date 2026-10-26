@@ -3,7 +3,9 @@
 One file per review: <data>/reviews/<board stem>.json for a board (page key board:<stem>) and
 <data>/reviews/sch/<slug>.json for schematics (page key sch:<slug>). An item is a talkpage item (status, thread,
 user_rev / agent_rev / seen_rev) plus the review fields below; a schematic file also keeps groups, show_diff and
-sheet_pairs at the top level. Files written by kireview 1 / kidiff (status_rev, 未確認, OK / NG) are converted when
+sheet_pairs at the top level. Status, severity and owner are stored as English codes (STATUSES, SEVERITIES, OWNERS);
+the Japanese words of earlier versions are read as their codes wherever a value comes in (files, the page, the
+agent's reply and fields, put). Files written by kireview 1 / kidiff (status_rev, 未確認, OK / NG) are converted when
 read; they are written back in this format on the next change.
 """
 import json
@@ -12,13 +14,20 @@ import re
 
 import talkpage as tp
 
-SEVERITIES = ('必須', '推奨', '任意', '情報')
-OWNERS = ('人', 'エージェント', '未定')
-# '' = not reviewed (未確認). The page offers 修正済み / 直して (修正を依頼) / OK (このまま); 質問 and 自分で修正 come from
-# older reviews and stay readable
-STATUSES = ('', 'このまま', '修正を依頼', '修正済み', '質問', '自分で修正')
-ASKING = ('修正を依頼', '質問')           # a status that waits for the agent
-OLD_STATUS = {'未確認': '', 'OK': 'このまま', 'NG': '修正を依頼'}   # kireview 1 / kidiff values
+SEVERITIES = ('must', 'should', 'could', 'info')
+OWNERS = ('human', 'agent', 'tbd')
+# '' = not reviewed. The page offers fixed / please fix (fix) / OK (ok); question and self-fix come from older reviews
+# and stay readable
+STATUSES = ('', 'ok', 'fix', 'fixed', 'question', 'self-fix')
+ASKING = ('fix', 'question')             # a status that waits for the agent
+CODES = {'status': STATUSES, 'severity': SEVERITIES, 'owner': OWNERS}
+# the Japanese values of earlier versions, and kireview 1 / kidiff's 未確認 / OK / NG
+ALIASES = {
+    'status': {'未確認': '', 'このまま': 'ok', '修正を依頼': 'fix', '修正済み': 'fixed', '質問': 'question',
+               '自分で修正': 'self-fix', 'OK': 'ok', 'NG': 'fix'},
+    'severity': {'必須': 'must', '推奨': 'should', '任意': 'could', '情報': 'info'},
+    'owner': {'人': 'human', 'エージェント': 'agent', '未定': 'tbd'},
+}
 SIDE_KEY = re.compile(r'^(F|B|In\d+)$')
 BOARD_ID = re.compile(r'^[\w.-]+$')
 # board items: ask / ideal / background are the three sections (依頼 / 理想 / 経緯), signal the line's kind, current and
@@ -30,23 +39,49 @@ BOARD_FIELDS = ('title', 'severity', 'owner', 'sides', 'x', 'y', 'r', 'w', 'h', 
 SCH_FIELDS = ('rationale', 'severity', 'owner', 'ask', 'signal', 'ideal', 'background', 'figures')
 
 
-def norm_status(st):
-    """A status from a page, the agent or an older file: '' for 未確認, OK / NG of kidiff mapped, else unchanged."""
-    if st is None:
+def norm_value(kind, v):
+    """A status / severity / owner value (kind) from a file, the page or the agent: its code for a Japanese word or a
+    code in other letter case, else unchanged (the check then refuses it)."""
+    if v is None:
         return None
-    st = str(st).strip()
-    return OLD_STATUS.get(st, st)
+    v = str(v).strip()
+    if v in ALIASES[kind]:
+        return ALIASES[kind][v]
+    return v.lower() if v.lower() in CODES[kind] else v
+
+
+def norm_status(st):
+    return norm_value('status', st)
+
+
+def norm_fields(fields):
+    """severity / owner of the agent's fields (a dict, changed in place) as codes."""
+    if isinstance(fields, dict):
+        for k in ('severity', 'owner'):
+            if k in fields:
+                fields[k] = norm_value(k, fields[k])
+    return fields
+
+
+def one_of(kind):
+    codes = ', '.join('""' if c == '' else c for c in CODES[kind])
+    return '%s must be one of %s (the Japanese names of earlier versions are accepted too)' % (kind, codes)
 
 
 def check_status(st):
     if st is not None and st not in STATUSES:
-        raise ValueError('status must be one of 未確認 (""), ' + ', '.join(s for s in STATUSES if s))
+        raise ValueError(one_of('status'))
 
 
 def migrate(d):
-    """Items written by kireview 1 or kidiff: talkpage revisions from the thread and status_rev / agent_rev."""
+    """Values as codes; items written by kireview 1 or kidiff: talkpage revisions from the thread and status_rev /
+    agent_rev."""
     for it in d.get('items', {}).values():
         it['status'] = norm_status(it.get('status') or '')
+        norm_fields(it)
+        for m in it.get('thread') or []:            # the status changes of the thread
+            if 'status' in m:
+                m['status'] = norm_status(m['status'] or '')
         if 'user_rev' in it:
             continue
         th = it.setdefault('thread', [])
@@ -98,9 +133,9 @@ def check_board_item(it):
     if not str(it.get('title') or '').strip():
         raise ValueError('title is required')
     if it.get('severity') not in SEVERITIES:
-        raise ValueError('severity must be one of ' + ', '.join(SEVERITIES))
+        raise ValueError(one_of('severity'))
     if it.get('owner') not in OWNERS:
-        raise ValueError('owner must be one of ' + ', '.join(OWNERS))
+        raise ValueError(one_of('owner'))
     check_status(it.get('status'))
     sides = it.get('sides')
     if not isinstance(sides, list) or not sides or not all(isinstance(s, str) and SIDE_KEY.match(s) for s in sides):
@@ -122,11 +157,12 @@ def put_board_item(store, body):
     if not BOARD_ID.match(iid):
         raise ValueError('id: letters, digits, _ . - only')
     old = store.data['items'].get(iid) or {}
-    it = {'severity': '情報', 'owner': '未定', 'refs': [], 'status': old.get('status', ''),
+    it = {'severity': 'info', 'owner': 'tbd', 'refs': [], 'status': old.get('status', ''),
           'thread': old.get('thread', []), 'user_rev': old.get('user_rev', 0), 'agent_rev': old.get('agent_rev', 0),
           'seen_rev': old.get('seen_rev', 0)}
     it.update({k: body[k] for k in BOARD_FIELDS if k in body})
     it['status'] = norm_status(it['status'])
+    norm_fields(it)
     if 'r' not in it and 'w' not in it:
         it['r'] = 1.0
     check_board_item(it)
@@ -136,7 +172,8 @@ def put_board_item(store, body):
 
 
 def check_fields(kind, fields, merged=None):
-    """Fields the agent sends with a reply: board items are checked as a whole (merged), schematic items by name."""
+    """Fields the agent sends with a reply (severity / owner already as codes, norm_fields): board items are checked as
+    a whole (merged), schematic items by name."""
     if fields is None:
         return
     if not isinstance(fields, dict):
@@ -149,9 +186,9 @@ def check_fields(kind, fields, merged=None):
         check_board_item(dict(merged or {}, **fields))
     else:
         if 'severity' in fields and fields['severity'] not in SEVERITIES:
-            raise ValueError('severity must be one of ' + ', '.join(SEVERITIES))
+            raise ValueError(one_of('severity'))
         if 'owner' in fields and fields['owner'] not in OWNERS:
-            raise ValueError('owner must be one of ' + ', '.join(OWNERS))
+            raise ValueError(one_of('owner'))
         if 'figures' in fields and not isinstance(fields['figures'], list):
             raise ValueError('figures is a list')
 
