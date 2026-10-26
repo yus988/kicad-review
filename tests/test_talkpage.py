@@ -161,7 +161,10 @@ class HttpTest(unittest.TestCase):
         page = 'notes/r1/index.html'
         waiter = subprocess.Popen([sys.executable, '-m', 'talkpage', '--port', str(self.port), 'wait',
                                    '--settle', '0.5'], env=ENV, stdout=subprocess.PIPE, text=True, encoding='utf-8')
-        time.sleep(0.8)
+        for _ in range(50):        # the waiter starts a new python: up to 5 s on a loaded machine
+            if self.req('/_talk/api/state?page=' + page)[1]['presence'] == 'listening':
+                break
+            time.sleep(0.1)
         self.assertEqual(self.req('/_talk/api/state?page=' + page)[1]['presence'], 'listening')
         code, it = self.req('/_talk/api/user', {'page': page, 'id': 'A1', 'title': 'A1 a', 'status': 'NG',
                                                 'comment': '鳴らない\n2 行目'}, headers={'Origin': 'http://127.0.0.1:%d' % self.port})
