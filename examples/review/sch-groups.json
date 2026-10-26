@@ -1,0 +1,4 @@
+[
+  {"id": "status-led", "title": "Second LED (status)", "keys": ["comp:R2", "comp:D2", "net:/STATUS_A"],
+   "rationale": "A green status LED beside the power LED, with the same 1 kΩ resistor."}
+]

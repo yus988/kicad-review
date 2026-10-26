@@ -1,0 +1,15 @@
+__pycache__/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+# data written when the examples are run with --data inside the clone
+review-data/
+reviews/
+cache/
+# KiCad's per-user project state and backups
+*.kicad_prl
+*-backups/
+fp-info-cache
+*.stackdump

@@ -1,0 +1,5 @@
+{
+  "field:R1": "330 Ω → 1 kΩ: about 3 mA is bright enough for an indicator and saves power.",
+  "field:C1": "Footprint 0603 → 0805: a 10 µF ceramic keeps more of its capacitance at 5 V in 0805.",
+  "net:/LED1_A": "Renamed so that the two LEDs read the same way (LED1_A, STATUS_A)."
+}
