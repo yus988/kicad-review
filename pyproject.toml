@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "kicad-review"
 dynamic = ["version"]
 description = "Review KiCad schematics (two versions or one design) and boards with a coding agent, on a local web page"
-readme = "README.md"
+readme = "README.en.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Yusuke Yamazaki" }]

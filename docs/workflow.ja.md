@@ -1,6 +1,6 @@
 # 回路設計から発注までの流れ（作者の例）
 
-[English](workflow.md) ・ [README](../README.ja.md)
+[English](workflow.md) ・ [README](../README.md)
 
 作者が KiCad とコーディングエージェント（Claude Code）で基板を作るときの流れです。作者にとってのおすすめで、プロジェクトによって変わります。kicad-review を使うのは 2 と 6 で、4 でも使えます。
 

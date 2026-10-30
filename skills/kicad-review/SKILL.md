@@ -7,7 +7,7 @@ when_to_use: When the user should check schematic changes or a design on the dra
 # kicad-review
 
 The command `kicad-review` comes from the Python package of the same name (`pipx install kicad-review` or from
-git). The page, file formats and API are described in the package's README.md and README.ja.md; read the section
+git). The page, file formats and API are described in the package's README.md (Japanese) and README.en.md (English); read the section
 "エージェントの進め方" (how the agent works) and "レビューのファイル" (review files) before the first use.
 
 ## Start

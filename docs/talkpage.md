@@ -1,5 +1,9 @@
 # talkpage（エージェントとやりとりするページ）
 
+> kicad-review に同梱の talkpage の説明（[talkpage](https://github.com/yus988/talkpage) の README の写し）。kicad-review を入れると、コマンド `talkpage` も入る。
+
+[English](talkpage.en.md)
+
 ユーザーとコーディングエージェント（Claude Code など）が、ローカルの HTML ページでやりとりするための基盤。ページの項目にユーザーが状態（OK / NG など）を付けたりコメントを書いたりすると、待っているエージェントが起き、エージェントの返信がページのその項目に出る。
 
 - 新しいページは、項目に `data-talk="<id>"` を付けるだけ（JSON でも宣言できる）。状態のボタン・コメントのやりとり・エージェントの在・不在の表示が付く
@@ -7,7 +11,15 @@
 - サーバーは `127.0.0.1` だけで待ち受け、外へは何も送らない。Python 3.9+ の標準ライブラリだけ。ページは CDN を使わない
 - エージェントは `talkpage wait` を background で動かして待つ。ユーザーが書くと、その内容を表示して終了し、その終了でエージェントが起きる（Claude Code なら Bash の `run_in_background`）
 
-KiCad のレビューのページ（[kicad-review](../README.ja.md)）の、KiCad に依存しない部分（項目ごとの状態とやりとりの保存、返信待ちの一覧、待ちのスクリプト、エージェントの返信）を切り出したもの。
+KiCad の回路図と基板のレビューのページ [kicad-review](https://github.com/yus988/kicad-review) の、KiCad に依存しない部分（項目ごとの状態とやりとりの保存、返信待ちの一覧、待ちのコマンド、エージェントの返信）を切り出したもの。実機の検証の手順、レビューの指摘、質問の一覧、チェックリストなど、ユーザーに項目ごとの結果や判断を返してもらうページに使う。
+
+## インストール
+
+```
+pipx install git+https://github.com/yus988/talkpage
+```
+
+コマンド `talkpage` が入る（[pipx](https://pipx.pypa.io/) は専用の環境に入れるので、ほかの Python の環境は変わらない）。入れずに使うときは、repo を clone するか zip で落として、その中の `talkpage.py` を実行する（`python talkpage.py serve ...`。以下の `talkpage` をこれに読み替える）。Python 3.9 以上の標準ライブラリだけで動く。
 
 ## 起動
 
@@ -19,12 +31,12 @@ talkpage serve <root> [--port 8190] [--open <ページ>]
 - `--open`: そのページ（root からのパスか、ファイルのパス）を既定のブラウザで開く
 - `http://127.0.0.1:8190/_talk/` に、状態のあるページの一覧と、エージェントの未読の数が出る
 - 起動の前に `http://127.0.0.1:8190/_talk/api/info` を見て、同じ root のサーバーが動いていれば再利用する（別の root なら `--port` を変える）。終了は Ctrl-C
-- ポートは `--port` か環境変数 `TALKPAGE_PORT`（既定 8190）。`wait` / `reply` / `ack` / `show` も同じ値を使う
 - 画面の言語は `--lang en|ja`（既定は環境変数 `TALKPAGE_LANG`、無ければ OS の言語が日本語なら日本語、ほかは英語）。ページ側の talkpage.js は、そのページの `<html lang>` に従う
+- ポートは `--port` か環境変数 `TALKPAGE_PORT`（既定 8190）。`wait` / `reply` / `ack` / `show` も同じ値を使う
 
 ## ページの作り方
 
-最小の例（[`examples/talkpage-sample/index.html`](../examples/talkpage-sample/index.html) も参照）:
+最小の例（[`sample/index.html`](../examples/talkpage-sample/index.html) も参照。`talkpage serve sample` で開ける）:
 
 ```html
 <link rel="stylesheet" href="/_talk/talkpage.css">
@@ -134,7 +146,7 @@ then wait again in the background: talkpage wait
 
 ## HTTP API
 
-すべて `http://127.0.0.1:<port>` のみ。POST は `Content-Type: application/json` だけ受け付ける。
+すべて `http://127.0.0.1:<port>` のみ。POST は `Content-Type: application/json` だけ受け付け、ブラウザの外からは `Origin: http://127.0.0.1:<port>` を付ける（「安全」）。
 
 | | |
 |---|---|
@@ -151,14 +163,25 @@ agent・ack・state・pending の `page` は、パスの一部（状態のある
 
 ## 安全
 
-- 待ち受けは `127.0.0.1` だけ。`Host` が `127.0.0.1:<port>` / `localhost:<port>` 以外の要求（DNS rebinding）と、別のサイトのページからの要求（`Origin` が違う）は 403。POST は JSON だけなので、別のサイトのフォームからは送れない
+- 待ち受けは `127.0.0.1` だけ。CORS のヘッダーは付けない（別のサイトの `fetch` は応答を読めず、preflight の `OPTIONS` は 501）
+- 次は 403（`Handler._local`）:
+  - `Host` が `127.0.0.1:<port>` / `localhost:<port>` 以外（DNS rebinding）
+  - `Origin` が `http://127.0.0.1:<port>` / `http://localhost:<port>` 以外（別のサイトのページ。`null` も）
+  - ブラウザが `Sec-Fetch-Site: cross-site` / `same-site` を付けた要求。別のサイトからは、リンクでページを開くこと（最上位の画面の移動）だけを通す。`<img>`・`<script>`・iframe・`fetch` は通さない
+  - 状態を変える要求（POST・DELETE と、`wait` が項目を受け取る `pending?listen=1` / `take=1`）で、`Origin` が無く、ページからの要求の印（`Sec-Fetch-Site: same-origin`、または自分の `Referer`）も無いもの。ブラウザの外のクライアントは `Origin: http://127.0.0.1:<port>` を付ける（`talkpage` のコマンドは付けている）。読むだけの GET（`info`・`state`）は、ヘッダー無しの curl でも読める
+- POST は JSON だけなので、別のサイトのフォーム（`text/plain` 等）からは送れない。ページは `X-Frame-Options: SAMEORIGIN` で、別のサイトの枠に入れて押させることもできない
+- root の下の HTML はすべて同じ origin で、ユーザーとしてコメントを送れる。root にはエージェントが作ったページだけを置き、ダウンロードした HTML や外部のページの保存を置かない。外から取った文（メール・Web・データシート）をページに入れるときは、HTML ではなく文字として入れる
 - 配るファイルは root の下だけ（`..` と `.` で始まる名前は拒否）。書くのは root の下に実在するページの横の `.talk.json` だけ
 - メッセージの表示はすべて文字として入れる（改行、`` `コード` ``、http(s) のリンクだけを整える）
 
 ## 試験
 
 ```
-python -m unittest test_talkpage
+python -m unittest discover tests
 ```
 
 保存・未読の判定・旧形式の読み込み、HTTP の経路と拒否、`wait` → コメント → 終了 → `reply` → ページの長いポーリングに返信が届く、までを確かめる。
+
+## ライセンス
+
+MIT（[LICENSE](../LICENSE)）。

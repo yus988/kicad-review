@@ -1,6 +1,6 @@
 # From schematic to order: an example workflow
 
-[日本語](workflow.ja.md) · [README](../README.md)
+[日本語](workflow.ja.md) · [README](../README.en.md)
 
 How the author builds boards with KiCad and a coding agent (Claude Code). It is the author's own preference and will
 differ between projects. kicad-review is used in steps 2 and 6, and can be used in step 4.
