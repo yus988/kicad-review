@@ -1,6 +1,6 @@
 # kicad-review
 
-[日本語](README.md)
+[日本語](https://github.com/yus988/kicad-review/blob/main/README.md)
 
 Review KiCad schematics and boards **together with a coding agent** (Claude Code, Codex, …) on a local web page.
 
@@ -14,13 +14,13 @@ Review KiCad schematics and boards **together with a coding agent** (Claude Code
 - Every item has a status (✔ fixed / ⚑ please fix / ✓ OK) and a comment thread. When you write, the agent that is
   waiting wakes up and its reply appears in place.
 
-![Demo: a schematic change discussed with the agent and approved, then a board fix asked for, made by the agent and shown on the board](docs/kicad-review-demo.webp)
+![Demo: a schematic change discussed with the agent and approved, then a board fix asked for, made by the agent and shown on the board](https://raw.githubusercontent.com/yus988/kicad-review/main/docs/kicad-review-demo.webp)
 
-*The 30-second demo above ([MP4](docs/kicad-review-demo.mp4)): the agent's side is scripted, but the commands it runs (`kicad-review wait`, `reply`, a KiCad python edit, `kicad-cli pcb drc`) and the pages are real.*
+*The 30-second demo above ([MP4](https://raw.githubusercontent.com/yus988/kicad-review/main/docs/kicad-review-demo.mp4)): the agent's side is scripted, but the commands it runs (`kicad-review wait`, `reply`, a KiCad python edit, `kicad-cli pcb drc`) and the pages are real.*
 
-![Schematic diff: two versions side by side, the selected change with the agent's intent and a short thread](docs/screenshots/sch.webp)
+![Schematic diff: two versions side by side, the selected change with the agent's intent and a short thread](https://raw.githubusercontent.com/yus988/kicad-review/main/docs/screenshots/sch.webp)
 
-![Board review: review items on the board, the selected one pointing at the unconnected pad](docs/screenshots/board.webp)
+![Board review: review items on the board, the selected one pointing at the unconnected pad](https://raw.githubusercontent.com/yus988/kicad-review/main/docs/screenshots/board.webp)
 
 > **Language:** the pages are in English or Japanese: `--lang en|ja`, by default `$KICAD_REVIEW_LANG`, else
 > Japanese when the OS language is Japanese, else English. The review files store English codes in both cases:
@@ -33,9 +33,9 @@ Review KiCad schematics and boards **together with a coding agent** (Claude Code
 >
 > The Japanese values of earlier versions (`修正済み`, `修正を依頼`, `このまま`, `必須`, `推奨`, `任意`, `情報`, `人`,
 > `エージェント`, `未定`, …) are still accepted everywhere and read as these codes. The full reference is in
-> [README.md](README.md) (Japanese).
+> [README.md](https://github.com/yus988/kicad-review/blob/main/README.md) (Japanese).
 
-Where it fits in a whole design, from circuit to order: [an example workflow](docs/workflow.md) (with pre-order
+Where it fits in a whole design, from circuit to order: [an example workflow](https://github.com/yus988/kicad-review/blob/main/docs/workflow.md) (with pre-order
 criteria the author uses).
 
 ## Requirements
@@ -63,7 +63,7 @@ pipx install kicad-review
   (`"C:\Program Files\KiCad\10.0\bin\python.exe" kicad-review.py ...` on Windows).
 
 The package installs two commands: `kicad-review` and `talkpage` (the page base it is built on; usable on its own, see
-[docs/talkpage.en.md](docs/talkpage.en.md)).
+[docs/talkpage.en.md](https://github.com/yus988/kicad-review/blob/main/docs/talkpage.en.md)).
 
 ## Try it with the example
 
@@ -94,15 +94,15 @@ kicad-review [A [B]] [BOARD.kicad_pcb] [--data DIR] [--port 8199] [--no-open] [-
   Default: the current folder. Your project folders are only read: files are copied to `cache/` before export, and
   git versions are taken with `git archive`.
 - The server listens on `127.0.0.1` only and refuses requests from other hosts or other sites' pages ("Safety" in
-  [docs/talkpage.en.md](docs/talkpage.en.md)). POST, DELETE and the GETs that run `git` or walk a folder
+  [docs/talkpage.en.md](https://github.com/yus988/kicad-review/blob/main/docs/talkpage.en.md)). POST, DELETE and the GETs that run `git` or walk a folder
   (`/api/refs`, `/api/projects`) pass only from the page or with `Origin: http://127.0.0.1:<port>` (the
   `kicad-review put` / `group` … commands send it). SVGs in `<data>/figures/` open with the server's origin, so put
   only figures you made there.
 
 ## Working with an agent
 
-Tell your agent to read this README and the Japanese [README.md](README.md) (section "エージェントの進め方"), or give it
-the skill in [`skills/kicad-review/SKILL.md`](skills/kicad-review/SKILL.md). The loop is:
+Tell your agent to read this README and the Japanese [README.md](https://github.com/yus988/kicad-review/blob/main/README.md) (section "エージェントの進め方"), or give it
+the skill in [`skills/kicad-review/SKILL.md`](https://github.com/yus988/kicad-review/blob/main/skills/kicad-review/SKILL.md). The loop is:
 
 1. Start the server in a terminal you can see. Board items: `kicad-review put --file items.json`; schematic groups of
    related changes: `kicad-review group --file groups.json`.
@@ -151,5 +151,5 @@ repository, commit there, then run `python tools/sync_talkpage.py <talkpage clon
 
 ## License
 
-MIT (see [LICENSE](LICENSE)). The example designs use symbols and footprints of the KiCad libraries
+MIT (see [LICENSE](https://github.com/yus988/kicad-review/blob/main/LICENSE)). The example designs use symbols and footprints of the KiCad libraries
 (CC-BY-SA 4.0 with an exception for designs that use them).
