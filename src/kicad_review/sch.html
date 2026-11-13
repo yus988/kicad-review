@@ -91,11 +91,16 @@ a { color: var(--sub); }
 .pane .lbl { position: absolute; left: 6px; top: 4px; z-index: 5; font-size: 12px; background: rgba(255,255,255,.85); padding: 1px 6px; border-radius: 3px; pointer-events: none; }
 .pane .none { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 15px; }
 /* will-change: the stage is a layer of its own, so a pan or zoom moves the drawn layer instead of drawing the sheet
-   again (a KiCad sheet SVG can hold ~100k paths: drawing it took ~250 ms a frame on a laptop GPU) */
+   again (a KiCad sheet SVG can hold ~100k paths: drawing it took ~250 ms a frame on a laptop GPU). The layer keeps the
+   resolution it was drawn at, so after a zoom sharpen() lays the stage out at the new scale (see layoutS) */
 .stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; isolation: isolate; background: #fff; will-change: transform; }
 .stage .layer { position: absolute; inset: 0; background: #fff; }
-.stage img, .stage svg.marks { position: absolute; left: 0; top: 0; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
-.stage img.ghost { opacity: .6; }             /* overlay: A in red under B */
+.stage img, .stage canvas, .stage svg.marks { position: absolute; left: 0; top: 0; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
+.stage img.ghost, .stage canvas.ghost { opacity: .6; }             /* overlay: A in red under B */
+/* while zooming the canvas picture of a sheet stands in for its SVG image (see layoutS) */
+.stage canvas { visibility: hidden; }
+#views.zooming .stage canvas[data-ready] { visibility: visible; }
+#views.zooming .stage canvas[data-ready] + img { visibility: hidden; }
 svg.marks { pointer-events: none; overflow: visible; }
 svg.marks rect { fill: none; vector-effect: non-scaling-stroke; }
 svg.marks rect.sub { stroke: none; fill: rgba(43,111,214,0); }
@@ -207,7 +212,17 @@ const ONLY_SIDE = { comp_added: 'b', comp_removed: 'a' };   // where the thing e
 const ST_DRAW = { 'ok': '#7a7f85', 'fix': '#e07000', 'self-fix': '#e07000', 'fixed': '#1a9a36', 'question': '#c020c0' };
 const ST_ARROW = { 'ok': '✓', 'fix': '⚑', 'self-fix': '✎', 'fixed': '✔', 'question': Review.ST_MARK.question };
 const STATUS_PRIO = { 'fix': 5, 'self-fix': 5, 'question': 4, '': 3, 'fixed': 2, 'ok': 1 };   // merged arrows: the most urgent wins
-const PX_PER_MM = 4;            // stage resolution before the view transform
+// Drawing the sheet works like a PDF viewer. The stage is laid out at layoutS px per sheet mm and the browser draws the
+// SVG once at that size, sharp; a pan only moves it. While a zoom goes on, a picture of the whole sheet drawn once into
+// a canvas (under each SVG image) is shown scaled instead, which costs nothing per frame; once the zoom rests for
+// SHARPEN_MS the stage is laid out at the new scale and the SVG is drawn sharp again. Scaling the drawn SVG layer
+// itself would be soft, and scaling it down after a deep zoom makes the browser draw a large area at full resolution.
+let layoutS = 4, sharpTimer = 0;
+const SHARPEN_MS = 180;
+const QUICK_MAX_PX = 3072;      // the canvas picture: longest side in pixels ...
+const QUICK_MAX_PX_PER_MM = 8;  // ... and at most this many pixels per sheet mm
+const QUICK_KEEP = 4;           // canvas pictures kept for sheets shown again
+const quickCache = new Map();   // image URL -> canvas (most recently used last)
 const DETAIL_RIGHT_W = 380;
 const ARROW_PX = 40;            // arrow length on screen
 const MERGE_PX = 16;            // arrow tips closer than this are drawn as one
@@ -537,7 +552,32 @@ function addImg(parent, info, w, h, cls, query) {
   img.draggable = false;
   img.style.width = info.box[2] / w * 100 + '%';   // each sheet at its own size inside the common stage
   img.style.height = info.box[3] / h * 100 + '%';
+  const cv = quickCanvas(img, info.box[2], info.box[3]);   // right before the image: shown in its place while zooming
+  cv.className = cls || '';
+  cv.style.width = img.style.width;
+  cv.style.height = img.style.height;
+  parent.appendChild(cv);
   parent.appendChild(img);
+}
+
+// the whole sheet drawn once into a canvas when its image has loaded (kept for a sheet shown again)
+function quickCanvas(img, mmW, mmH) {
+  let cv = quickCache.get(img.src);
+  if (cv) { quickCache.delete(img.src); quickCache.set(img.src, cv); return cv; }
+  cv = document.createElement('canvas');
+  const s = Math.min(QUICK_MAX_PX / Math.max(mmW, mmH), QUICK_MAX_PX_PER_MM);
+  cv.width = Math.max(1, Math.round(mmW * s));
+  cv.height = Math.max(1, Math.round(mmH * s));
+  img.decode().then(() => {
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.drawImage(img, 0, 0, cv.width, cv.height);
+    cv.dataset.ready = '1';
+  }).catch(() => {});                // not drawn: the zoom scales the SVG layer instead
+  quickCache.set(img.src, cv);
+  while (quickCache.size > QUICK_KEEP) quickCache.delete(quickCache.keys().next().value);
+  return cv;
 }
 
 // layers: list of {side, ghost: bool, group: bool}
@@ -553,8 +593,10 @@ function makePane(label, sides, layers, missing) {
   p.appendChild(lbl);
   const st = document.createElement('div');
   st.className = 'stage';
-  st.style.width = w * PX_PER_MM + 'px';
-  st.style.height = h * PX_PER_MM + 'px';
+  st.dataset.w = w;
+  st.dataset.h = h;
+  st.style.width = w * layoutS + 'px';
+  st.style.height = h * layoutS + 'px';
   for (const L of layers) {
     const info = sh[L.side];
     let parent = st;
@@ -780,9 +822,22 @@ function clearSelection() {
 }
 
 function applyView() {
-  const t = 'translate(' + view.x + 'px,' + view.y + 'px) scale(' + view.s / PX_PER_MM + ')';
+  const k = view.s / layoutS;
+  const t = 'translate(' + view.x + 'px,' + view.y + 'px)' + (k === 1 ? '' : ' scale(' + k + ')');
   document.querySelectorAll('.stage').forEach(st => st.style.transform = t);
+  $('views').classList.toggle('zooming', k !== 1);   // the canvas pictures stand in for the SVG images
+  clearTimeout(sharpTimer);
+  if (k !== 1) sharpTimer = setTimeout(sharpen, SHARPEN_MS);
   drawArrows();
+}
+
+function sharpen() {               // lay the stages out at the current zoom: the SVG drawn again, sharp
+  layoutS = view.s;
+  document.querySelectorAll('.stage').forEach(st => {
+    st.style.width = st.dataset.w * layoutS + 'px';
+    st.style.height = st.dataset.h * layoutS + 'px';
+  });
+  applyView();
 }
 
 function paneSize() {
