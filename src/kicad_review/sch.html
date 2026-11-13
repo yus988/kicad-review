@@ -24,6 +24,7 @@ body.single .bside { display: none !important; }
 .cmp-opts label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .cmp-btns { display: flex; gap: 6px; align-items: center; }
 .cmp-btns .grow { flex: 1; }
+#cmpRun { min-width: 7em; }   /* the label changes with B (review one design / compare): the width stays */
 #recent { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; max-height: 180px; overflow: auto; }
 #recent button { text-align: left; overflow: hidden; text-overflow: ellipsis; }
 .cmp-t { color: var(--muted); font-size: 12px; margin-top: 10px; }
@@ -89,7 +90,9 @@ a { color: var(--sub); }
 .pane.hot { cursor: pointer; }
 .pane .lbl { position: absolute; left: 6px; top: 4px; z-index: 5; font-size: 12px; background: rgba(255,255,255,.85); padding: 1px 6px; border-radius: 3px; pointer-events: none; }
 .pane .none { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 15px; }
-.stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; isolation: isolate; background: #fff; }
+/* will-change: the stage is a layer of its own, so a pan or zoom moves the drawn layer instead of drawing the sheet
+   again (a KiCad sheet SVG can hold ~100k paths: drawing it took ~250 ms a frame on a laptop GPU) */
+.stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; isolation: isolate; background: #fff; will-change: transform; }
 .stage .layer { position: absolute; inset: 0; background: #fff; }
 .stage img, .stage svg.marks { position: absolute; left: 0; top: 0; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
 .stage img.ghost { opacity: .6; }             /* overlay: A in red under B */
@@ -127,7 +130,7 @@ svg.arrows text.ref { font-size: 12px; stroke-width: 4px; }
 <body>
 <header id="hdr">
   <div id="tabs"></div>
-  <button id="cmpBtn" data-i18n="sch.cmp">Compare</button>
+  <button id="cmpBtn" data-i18n="sch.cmp">Choose a schematic</button>
   <span id="status"></span>
   <span class="grow"></span>
   <span id="presence"></span>
@@ -1096,6 +1099,14 @@ function renderSide(k) {
   sideEl(k, 'path').value = cmp[k].path || '';
   fillProjects(k, cmp.a.path || cmp.b.path);
   fillRefs(k);
+  runLabel();
+}
+
+// the run button says what it does: B empty opens A alone for review, B given compares the two
+function runLabel() {
+  const two = !!(sideEl('b', 'path').value.trim() || cmp.b.path);
+  $('cmpRun').textContent = t(two ? 'sch.run' : 'sch.run.one');
+  $('cmpRun').title = t(two ? 'sch.run.title' : 'sch.run.one.title');
 }
 
 function specOf(k) {
@@ -1124,6 +1135,7 @@ function renderRecent() {
 
 async function runCompare(btn, a, b) {
   btn.disabled = true;
+  following = true;               // this tab changes the review itself: the info poll must not load it a second time
   status(t('exporting'));
   try {
     const st = await api('/api/sch/compare', { a, b });
@@ -1135,7 +1147,7 @@ async function runCompare(btn, a, b) {
   } catch (err) {
     status('');
     notice(btn, t('failed', { msg: err.message }));
-  } finally { btn.disabled = false; }
+  } finally { btn.disabled = false; following = false; }
 }
 
 function openCompare() {
@@ -1161,8 +1173,9 @@ $('cmpRun').onclick = e => {
   runCompare(e.currentTarget, a, b);
 };
 for (const k of ['a', 'b']) {
-  sideEl(k, 'proj').onchange = e => { cmp[k] = { path: e.target.value, ref: '' }; sideEl(k, 'path').value = e.target.value; fillRefs(k); };
-  sideEl(k, 'path').onchange = e => { cmp[k] = { path: e.target.value.trim(), ref: '' }; fillProjects(k, cmp.a.path || cmp.b.path); fillRefs(k); };
+  sideEl(k, 'proj').onchange = e => { cmp[k] = { path: e.target.value, ref: '' }; sideEl(k, 'path').value = e.target.value; fillRefs(k); runLabel(); };
+  sideEl(k, 'path').onchange = e => { cmp[k] = { path: e.target.value.trim(), ref: '' }; fillProjects(k, cmp.a.path || cmp.b.path); fillRefs(k); runLabel(); };
+  sideEl(k, 'path').oninput = runLabel;
   sideEl(k, 'ref').onchange = e => { cmp[k].ref = e.target.value; };
 }
 document.addEventListener('keydown', e => {
@@ -1179,8 +1192,18 @@ Review.arrowKeys(() => !$('cmp').hidden || !$('pairPop').hidden, d => {
   const key = Review.neighbor(sel !== null && E[sel] ? E[sel].key : null, d);
   if (key != null && EK[key] !== undefined) select(EK[key], true);
 });
-let boardOn = null;
-Review.onInfo(i => { if (!!i.board !== boardOn) { boardOn = !!i.board; renderDetail(); } });   // the links to the board
+let boardOn = null, following = false;
+Review.onInfo(i => {
+  if (!!i.board !== boardOn) { boardOn = !!i.board; renderDetail(); }   // the links to the board
+  // the server holds another schematic review than this page (restarted on a renamed folder, or another tab opened
+  // another one): load it, or the page would keep writing to a review the server no longer has
+  const srv = i.sch && i.sch.page;
+  if (srv && S && srv !== S.review.page && !following) {
+    following = true;
+    api('/api/sch/state').then(st => { if (!st.empty) { load(st); notice($('cmpBtn'), t('sch.followed')); } })
+      .catch(() => {}).finally(() => { following = false; });
+  }
+});
 document.addEventListener('visibilitychange', seen);
 addEventListener('hashchange', takeRef);
 window.addEventListener('resize', fit);

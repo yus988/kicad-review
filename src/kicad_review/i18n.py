@@ -53,6 +53,7 @@ MSG = {
         'net.added': 'Net added: {b}',
         'part.old': ' (was {ref})',
         'need_a': 'Please choose A',
+        'review.gone': 'The server does not have the review {page} open (it was restarted or opened another one). Reload the page.',
         # board: what is at a point
         'no_net': '(no net)',
         'side.F': 'front',
@@ -101,6 +102,7 @@ MSG = {
         'net.added': 'ネット追加: {b}',
         'part.old': '（旧 {ref}）',
         'need_a': 'A を指定してください',
+        'review.gone': 'サーバーはレビュー {page} を開いていません（再起動したか、別のレビューを開いた）。ページを再読み込みしてください。',
         'no_net': '(ネットなし)',
         'side.F': '表',
         'side.B': '裏',

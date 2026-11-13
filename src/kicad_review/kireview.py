@@ -41,6 +41,7 @@ STATIC = {'/i18n.js': 'text/javascript', '/review.js': 'text/javascript', '/revi
 FIGURE_TYPES = {'.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg'}
 TALK_CMDS = ('wait', 'reply', 'ack', 'show')
 NAME = re.compile(r'^[\w.@+-]+$')     # review names (board stems, schematic slugs) and figure files
+REVIEW_KEY = re.compile(r'^(sch|board):[\w.@+-]+$')   # page key of a review store
 
 
 def page_stamp():
@@ -141,8 +142,13 @@ class App:
         """/_talk/api/user and /agent: the item must belong to the review, the status and fields must be ours."""
         if path not in ('/_talk/api/user', '/_talk/api/agent') or not isinstance(body, dict):
             return
+        page = body.get('page')
         with self.cond:
-            s = self.talk.store(body.get('page'), loose=path == '/_talk/api/agent')
+            # a review key (sch:<slug>, board:<stem>) the server does not hold: a page left open across a restart on
+            # a renamed folder. talkpage would read it as a path of an .html page and say so; say what happened instead
+            if path == '/_talk/api/user' and isinstance(page, str) and REVIEW_KEY.match(page) and page not in self.talk.stores:
+                raise ValueError(i18n.t('review.gone', page=page))
+            s = self.talk.store(page, loose=path == '/_talk/api/agent')
         if not isinstance(s, ks.ReviewStore):
             raise ValueError('not a review: %s' % s.page)
         body['page'] = s.page
