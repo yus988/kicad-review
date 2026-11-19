@@ -242,8 +242,7 @@ class AreaTest(unittest.TestCase):
         self.diff.sides['a']['info'] = {'folder': self.dir, 'stamp': [['a.kicad_sch', st.st_mtime_ns, st.st_size]]}
         self.assertFalse(self.diff.stale())
         with open(p, 'a', encoding='utf-8') as f:
-            f.write('
-')                                                # saved again
+            f.write('\n')                                                # saved again
         self.assertTrue(self.diff.stale())
         self.diff.sides['a']['info'] = {'folder': self.dir, 'stamp': [['gone.kicad_sch', 1, 1]]}
         self.assertTrue(self.diff.stale())
