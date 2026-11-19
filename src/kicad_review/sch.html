@@ -139,6 +139,7 @@ svg.arrows .frame { fill: transparent; stroke-width: 1.2; }
 svg.arrows .glow { fill: none; stroke-opacity: .35; stroke-linecap: round; stroke-linejoin: round; }
 svg.arrows .frame.info { stroke-dasharray: 5 3; }
 svg.arrows .frame.area { stroke-dasharray: 7 4; pointer-events: visibleStroke; }   /* the inside still pans */
+svg.arrows .frame.pick { pointer-events: visibleStroke; }   /* the selected part: inside, a drag pans and Ctrl+click opens its datasheet */
 svg.arrows .pending { fill: rgba(122,79,201,.07); stroke: var(--ask); stroke-width: 1.5; stroke-dasharray: 6 4; pointer-events: none; }
 svg.arrows g.sel .shaft { stroke-width: 3.2; }
 svg.arrows g.sel .halo { stroke-width: 6.5; }
@@ -260,6 +261,7 @@ const quickCache = new Map();   // sheet image URL -> canvas (most recently used
 const DETAIL_RIGHT_W = 380;
 const ARROW_PX = 40;            // arrow length on screen
 const MERGE_PX = 16;            // arrow tips closer than this are drawn as one
+const PICK_PAD = 4;             // the frame around the selected part lies this far (px) outside its box
 let S = null, sheet = '/', mode = 'side', flipSide = 'b', filterText = '';
 let E = [], itemEntry = [];     // list entries (items, or groups of items); item index -> entry index
 let EK = {};                    // entry key -> entry index
@@ -751,8 +753,9 @@ function targets(it, k) {
   const out = [];
   for (const m of it[k].filter(m => m.sheet === sheet)) {
     // only fields changed, same symbol: point at the visible changed field texts
+    // (and, once selected, frame the whole part too: whole, no arrow of its own)
     const f = it.kind === 'comp_changed' && !it.fields.includes('Symbol') ? it.fields.filter(n => m.fields && m.fields[n]) : [];
-    if (f.length) for (const n of f) out.push({ box: m.fields[n], frame: true });
+    if (f.length) { for (const n of f) out.push({ box: m.fields[n], frame: true }); out.push({ box: m.box, frame: false, whole: true }); }
     else out.push({ box: m.box, frame: false });
   }
   return out;
@@ -804,6 +807,7 @@ function drawArrows() {              // arrows + field frames in screen pixels, 
         if (mk === 'info' && n !== sel) return;                    // a picked part: only while selected
         if (n !== sel && !matches(E[n])) return;                   // the list filter also filters the drawing
         for (const t of targets(it, k)) {
+          if (t.whole && n !== sel) continue;
           const x0 = view.x + t.box[0] * view.s, y0 = view.y + t.box[1] * view.s;
           const x1 = view.x + t.box[2] * view.s, y1 = view.y + t.box[3] * view.s;
           if (x1 < -40 || y1 < -40 || x0 > W + 40 || y0 > H + 40) continue;
@@ -813,9 +817,13 @@ function drawArrows() {              // arrows + field frames in screen pixels, 
           const st = rv(E[n].key).status || '';
           // not reviewed yet: parts --ask, changes (also inside a group) their kind colour
           const color = ST_DRAW[st] || css(it.kind === 'part' ? '--ask' : (KIND_COLOR[it.kind] || '--chg'));
-          if (t.frame) frames.push({ x0, y0, x1, y1, n, i, color });
+          // the selected entry also frames what it points at (a part: its symbol), so the reader sees what is selected
+          // before asking about it; the frame lies a little outside the box, the arrow at its corner
+          const picked = !t.frame && n === sel, d = picked ? PICK_PAD + 1 : 2;
+          if (t.frame || picked) frames.push({ x0, y0, x1, y1, n, i, color, pick: picked });
+          if (t.whole) continue;
           // tip just outside the top-left corner of the target, tail further up-left (never on the target itself)
-          list.push({ x: x0 - 2, y: y0 - 2, entries: [n], items: [i], color, prio: STATUS_PRIO[st] || 3, mark: ST_ARROW[st] || '' });
+          list.push({ x: x0 - d, y: y0 - d, entries: [n], items: [i], color, prio: STATUS_PRIO[st] || 3, mark: ST_ARROW[st] || '' });
         }
       });
       E.forEach((e, n) => {          // area questions: a dashed box on their sheet and side, an arrow at its corner
@@ -865,9 +873,10 @@ function drawArrows() {              // arrows + field frames in screen pixels, 
     for (const f of frames) {
       const g = document.createElementNS(NS, 'g'), st = state([f.n], [f.i]);
       if (st) g.setAttribute('class', st);
-      const x = f.x0 - 1.5, y = f.y0 - 1.5, w = f.x1 - f.x0 + 3, h = f.y1 - f.y0 + 3;
+      const pad = f.pick ? PICK_PAD : 1.5;
+      const x = f.x0 - pad, y = f.y0 - pad, w = f.x1 - f.x0 + 2 * pad, h = f.y1 - f.y0 + 2 * pad;
       g.innerHTML = (st.startsWith('sel') ? '<rect class="glow" x="' + (x - 2) + '" y="' + (y - 2) + '" width="' + (w + 4) + '" height="' + (h + 4) + '" rx="3" stroke-width="5" stroke="' + f.color + '"/>' : '') +
-        '<rect class="frame' + (f.info ? ' info' : '') + (f.area ? ' area' : '') + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="2" stroke="' + f.color + '"/>';
+        '<rect class="frame' + (f.info ? ' info' : '') + (f.area ? ' area' : '') + (f.pick ? ' pick' : '') + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="2" stroke="' + f.color + '"/>';
       pick(g, [f.n], [f.i]);
       layers[st.startsWith('sel') ? 'sel' : st || 'plain'].push(g);
     }
