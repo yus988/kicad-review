@@ -341,6 +341,7 @@ function markKind(e) { return e.kind === 'part' && !reviewed(e) ? 'info' : 'ask'
 function quiet(e) { return e.kind === 'part' && !!S.items[e.items[0]].quiet && !reviewed(e); }
 function shown(n) { return n === sel || !quiet(E[n]); }
 function countOn(name) { return E.filter((e, n) => e.sheet === name && shown(n)).length; }
+function partsOn(name) { return S.items.filter(it => it.sheet === name && it.kind === 'part').length; }
 const keyEntry = key => { const i = S.items.findIndex(it => it.key === key); return i >= 0 ? itemEntry[i] : -1; };
 
 // ---------------------------------------------------------------- header, navigation, list
@@ -385,12 +386,14 @@ function renderNav() {
   tabs.innerHTML = '';
   if (!S) return;
   for (const sh of S.sheets) {
-    const n = countOn(sh.name), b = document.createElement('button');
+    // items = list entries (parts, groups on their first part's sheet, area questions); parts = the parts on the sheet
+    const n = countOn(sh.name), np = partsOn(sh.name), b = document.createElement('button');
     b.className = 'stab' + (sh.name === sheet ? ' on' : '');
-    b.title = sh.name + t(S.single || !S.show_diff ? 'sch.tab.parts' : 'sch.tab.items', { n });
-    b.innerHTML = '<span></span><span class="cnt"></span>';
+    b.title = sh.name + t('sch.tab.counts', { n, p: np });
+    b.innerHTML = '<span></span><small class="pcnt"></small><span class="cnt"></span>';
     b.firstChild.textContent = sheetTabLabel(sh.name);
-    b.lastChild.textContent = n;
+    b.children[1].textContent = t('sch.tab.pcnt', { n: np });
+    b.lastChild.textContent = t('sch.tab.icnt', { n });
     if (!n) b.lastChild.classList.add('zero');
     if (!S.single && (!sh.a || !sh.b)) { const m = document.createElement('small'); m.textContent = t(!sh.a ? 'sch.only.b' : 'sch.only.a'); b.insertBefore(m, b.lastChild); }
     b.onclick = () => setSheet(sh.name, true);
