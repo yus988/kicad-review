@@ -121,8 +121,10 @@
   // server serves (/api/datasheet/...) open there. The tab shows our page /datasheet (datasheet.html): the datasheet in
   // a frame under a bar with the part and our icon, so the tab says what it belongs to; being ours, it is found again
   // by its name and cuts its link back to this page (a tab showing another site itself would be found only while it
-  // keeps that link). ref: the part, for the tab's title.
+  // keeps that link). ref: the part; the tab is named after the review it was opened from (setReviewName) and the part.
   const DATASHEET_TAB = 'kireview-datasheet';
+  let reviewName = () => '';
+  const setReviewName = fn => { reviewName = fn; };
   function openDatasheet(href, ref) {
     let to = null;
     try { to = new URL(href, location.href); } catch (_) { return false; }
@@ -130,7 +132,9 @@
       to.origin === location.origin && to.pathname.startsWith('/api/datasheet/');
     if (!ok) return false;
     let w = null;
-    const page = '/datasheet?u=' + encodeURIComponent(href) + (ref ? '&r=' + encodeURIComponent(ref) : '');
+    const name = reviewName() || '';
+    const page = '/datasheet?u=' + encodeURIComponent(href) + (ref ? '&r=' + encodeURIComponent(ref) : '') +
+      (name ? '&n=' + encodeURIComponent(name) : '');
     try { w = window.open(page, DATASHEET_TAB); } catch (_) {}
     if (!w) return false;
     try { w.focus(); } catch (_) {}
@@ -522,6 +526,6 @@
     STATUS_BTNS, BTN_LABEL, ST_NAME, ST_MARK, ST_LINE, DONE, SEVERITIES, SEV_LABEL, SEV_MEANING, OWNER_LABEL,
     OWNER_MEANING, stClass, isWaiting, isUnread,
     filters, sevChip, ownerChip, rowHtml, groupHtml, neighbor, askHtml, notesHtml, msgsHtml, threadHtml,
-    openFigure, closeFigure, figureOpen, bindFigures, footer, docks, arrowKeys, place, openDatasheet,
+    openFigure, closeFigure, figureOpen, bindFigures, footer, docks, arrowKeys, place, openDatasheet, setReviewName,
   };
 })();

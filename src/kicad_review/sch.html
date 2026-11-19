@@ -341,6 +341,9 @@ function countOn(name) { return E.filter((e, n) => e.sheet === name && shown(n))
 const keyEntry = key => { const i = S.items.findIndex(it => it.key === key); return i >= 0 ? itemEntry[i] : -1; };
 
 // ---------------------------------------------------------------- header, navigation, list
+// the review's name: the tab says "<name> review", the datasheet tab "<name> datasheet"
+function reviewName() { return !S ? '' : S.single ? S.sides.a.short : S.sides.a.short + ' → ' + S.sides.b.short; }
+Review.setReviewName(reviewName);
 function renderHeader() {
   document.body.classList.toggle('single', !S || S.single);
   // the header names A → B in one button that opens the compare panel; the full paths in its tooltip
@@ -348,7 +351,7 @@ function renderHeader() {
   b.textContent = !S ? t('sch.cmp.choose') : S.single ? (sd.a.disp || sd.a.short) + t('sch.one') : sd.a.short + ' → ' + sd.b.short;
   b.title = !S ? t('sch.cmp.choose.title') : ['a', 'b'].filter(k => sd[k]).map(k => k.toUpperCase() + ': ' + (sd[k].disp || sd[k].short) + '\n   ' +
     sd[k].label + (sd[k].readonly ? t('sch.readonly.git') : '')).join('\n') + '\n' + t('sch.cmp.click');
-  document.title = !S ? t('sch.title') : t('sch.doctitle', { name: S.single ? sd.a.short : sd.a.short + ' → ' + sd.b.short });
+  document.title = !S ? t('sch.title') : t('sch.doctitle', { name: reviewName() });
   document.body.classList.toggle('nodiff', !!S && !S.single && !S.show_diff);
   $('diffChk').checked = !!S && !S.single && !!S.show_diff;
   $('diffChk').disabled = !S || S.single;
