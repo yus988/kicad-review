@@ -1361,6 +1361,20 @@ class Diff:
         self.set_option('show_diff', bool(on))
         return self.load()
 
+    def area_contents(self, side, sheet, box):
+        """What is in a box (sheet mm) of a sheet of one side: the parts whose box meets it, in reference order, and the
+        nets on their pins, named nets first."""
+        s = self.sides.get(side)
+        if not s or sheet not in s['sheets']:
+            raise ValueError('no sheet %s on side %s' % (sheet, side))
+        x0, y0, x1, y1 = box
+        refs = sorted((r for r, p in s['pos'].items()
+                       if p['sheet'] == sheet and p['box'][0] <= x1 and p['box'][2] >= x0 and p['box'][1] <= y1 and p['box'][3] >= y0),
+                      key=lambda r: [int(x) if x.isdigit() else x for x in re.split(r'(\d+)', r)])
+        inside = set(refs)
+        nets = {n for (r, _), n in s['net']['pin_net'].items() if r in inside}
+        return refs, sorted(nets, key=lambda n: (is_auto_net(n), n))
+
     def set_sheet_pair(self, a, b):
         """Pair A's sheet a (its own path) with B's sheet b, or b = '' to show a unpaired. Kept in the review file."""
         st = self.state

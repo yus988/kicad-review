@@ -205,6 +205,49 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.req('/api/datasheet-url?u=https%3A%2F%2Fexample.com%2Fa.pdf')[0], 404)   # links of a schematic only
         self.assertEqual(self.req('/api/datasheet-url?u=x', headers={'Origin': None})[0], 403)      # it fetches: our pages only
         self.assertEqual(self.req('/datasheet')[0], 200)
+        self.assertEqual(self.req('/api/sch/area', {'sheet': '/', 'side': 'a', 'box': [0, 0, 1, 1], 'comment': 'x'})[0], 400)
+
+
+class AreaTest(unittest.TestCase):
+    """An area question (Ctrl+drag on the schematic page): what is in the box, the item and its title."""
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.diff = kc.Diff.__new__(kc.Diff)
+        self.diff.sides = {'a': {'sheets': {'/': {}, '/power/': {}}, 'pos': {
+            'R12': {'sheet': '/power/', 'box': [10, 10, 12, 14]},
+            'U3': {'sheet': '/power/', 'box': [20, 8, 30, 20]},
+            'C5': {'sheet': '/power/', 'box': [29, 19, 31, 23]},       # reaches into the box at its corner
+            'R2': {'sheet': '/power/', 'box': [10, 10, 12, 14]},
+            'R9': {'sheet': '/power/', 'box': [50, 50, 52, 54]},       # outside
+            'U1': {'sheet': '/', 'box': [10, 10, 20, 20]}},            # another sheet
+            'net': {'pin_net': {('U3', '1'): 'Net-(U3-FB)', ('U3', '2'): '+5V', ('R12', '1'): 'GND',
+                                ('R9', '1'): 'OTHER', ('C5', '1'): '+5V'}}}}
+
+    def tearDown(self):
+        shutil.rmtree(self.dir)
+
+    def test_contents(self):
+        refs, nets = self.diff.area_contents('a', '/power/', [9, 9, 29.5, 19.5])
+        self.assertEqual(refs, ['C5', 'R2', 'R12', 'U3'])                 # in reference order
+        self.assertEqual(nets, ['+5V', 'GND', 'Net-(U3-FB)'])             # named nets first
+        with self.assertRaises(ValueError):
+            self.diff.area_contents('a', '/nope/', [0, 0, 1, 1])
+
+    def test_item(self):
+        s = ks.ReviewStore(os.path.join(self.dir, 'r.json'), 'sch:x', 'sch')
+        refs = ['C1', 'C2', 'C3', 'R1', 'R2', 'R3', 'R4', 'R5', 'TP1', 'U2', 'Q1']
+        iid = ks.new_area(s, '/power/', 'a', [1.234, 2, 3, 4], refs, ['GND'], 'power')
+        self.assertEqual(iid, 'area:1')
+        it = s.data['items'][iid]
+        self.assertEqual((it['sheet'], it['side'], it['box'], it['refs']), ('/power/', 'a', [1.23, 2, 3, 4], refs))
+        self.assertTrue(it['title'].startswith('Area 1 (power: U2 Q1 R1'))  # the main parts first
+        self.assertIn(' and 3 more', it['title'])
+        self.assertEqual(ks.new_area(s, '/', 'a', [0, 0, 1, 1], [], [], '/'), 'area:2')
+        self.assertEqual(s.data['items']['area:2']['title'], 'Area 2 (/)')
+        ks.delete_area(s, 'area:1')
+        self.assertNotIn('area:1', s.data['items'])
+        with self.assertRaises(ValueError):
+            ks.delete_area(s, 'comp:R1')
 
 
 # a sheet of 200 x 130 mm: cells of 4 x 3 (kc.TILE_MM 64), each 50 x 43.33 mm

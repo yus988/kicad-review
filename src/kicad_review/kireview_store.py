@@ -14,6 +14,8 @@ import re
 
 import talkpage as tp
 
+from .i18n import t
+
 SEVERITIES = ('must', 'should', 'could', 'info')
 OWNERS = ('human', 'agent', 'tbd')
 # '' = not reviewed. The page offers fixed / please fix (fix) / OK (ok); question and self-fix come from older reviews
@@ -191,6 +193,48 @@ def check_fields(kind, fields, merged=None):
             raise ValueError(one_of('owner'))
         if 'figures' in fields and not isinstance(fields['figures'], list):
             raise ValueError('figures is a list')
+
+
+# ---------------------------------------------------------------- schematic area questions
+AREA_TITLE_REFS = 8                # parts named in the title of an area question, the main ones first:
+# ICs, transistors, connectors, diodes, inductors, crystals, switches, the rest, then resistors, capacitors, test points
+AREA_REF_RANK = (('U', 'IC'), ('Q',), ('J', 'P', 'CN', 'CON', 'USB'), ('D', 'LED'), ('L', 'FB', 'T'), ('Y', 'X'),
+                 ('SW', 'S', 'K', 'F'))
+AREA_REF_LAST = ('R', 'RN', 'C', 'TP')
+
+
+def _title_rank(ref):
+    prefix = re.match(r'[A-Za-z]*', ref).group(0).upper()
+    for n, group in enumerate(AREA_REF_RANK):
+        if prefix in group:
+            return n
+    return len(AREA_REF_RANK) + 1 + AREA_REF_LAST.index(prefix) if prefix in AREA_REF_LAST else len(AREA_REF_RANK)
+
+
+def new_area(store, sheet, side, box, refs, nets, sheet_label):
+    """A question about an area of a sheet (the user's Ctrl+drag on the page): item area:<n> with the sheet, side, box
+    (sheet mm), and the parts in it and the nets on their pins. The title names the sheet and the first parts, so the
+    agent's wait output says where it is. Callers hold the lock and add the user's comment."""
+    n = 1
+    while 'area:%d' % n in store.data['items']:
+        n += 1
+    iid = 'area:%d' % n
+    where = sheet_label
+    if refs:
+        main = sorted(refs, key=lambda r: (_title_rank(r), refs.index(r)))[:AREA_TITLE_REFS]
+        where += ': ' + ' '.join(main) + (t('area.more', n=len(refs) - AREA_TITLE_REFS) if len(refs) > AREA_TITLE_REFS else '')
+    store.data['items'][iid] = {'title': t('area.title', n=n, where=where), 'sheet': sheet, 'side': side,
+                                'box': [round(v, 2) for v in box], 'refs': refs, 'nets': nets, 'status': '',
+                                'thread': [], 'user_rev': 0, 'agent_rev': 0, 'seen_rev': 0}
+    return iid
+
+
+def delete_area(store, iid):
+    if not str(iid).startswith('area:') or iid not in store.data['items']:
+        raise ValueError('no such area question: %s' % iid)
+    del store.data['items'][iid]
+    store.touch()
+    return {'deleted': iid, 'rev': store.data['rev']}
 
 
 # ---------------------------------------------------------------- schematic groups and settings

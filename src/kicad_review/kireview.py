@@ -271,6 +271,11 @@ class App:
                 return 200, self.sch.set_sheet_pair(body.get('a') or '', body.get('b') or '')
             if path == '/api/sch/open':
                 return 200, self.sch.open_kicad(body.get('side'))
+            if path == '/api/sch/area':
+                with self.cond:
+                    out = self.sch_area(body)
+                    self.cond.notify_all()
+                return 200, out
             if path == '/api/sch/group':
                 with self.cond:
                     out = ks.set_group(self.sch.store, body.get('id'), body.get('title') or '', body.get('keys'),
@@ -297,7 +302,35 @@ class App:
                 out = ks.delete_group(self.sch.store, one)
                 self.cond.notify_all()
             return 200, out
+        if path == '/api/sch/area':
+            self._need('sch')
+            with self.cond:
+                out = ks.delete_area(self.sch.store, one)
+                self.cond.notify_all()
+            return 200, out
         return None
+
+    def sch_area(self, body):
+        """A question the user asks about an area of a sheet: item area:<n> (ks.new_area) with the user's comment.
+        Callers hold cond."""
+        sheet, side, box = body.get('sheet'), body.get('side'), body.get('box')
+        comment = (body.get('comment') or '').strip()
+        if side not in ('a', 'b'):
+            raise ValueError('side: "a" or "b"')
+        if not isinstance(sheet, str):
+            raise ValueError('sheet: a sheet path ("/", "/power/", ...)')
+        if not (isinstance(box, list) and len(box) == 4 and all(isinstance(v, (int, float)) for v in box)):
+            raise ValueError('box: [x0, y0, x1, y1] in sheet mm')
+        if not comment:
+            raise ValueError('comment is required')
+        box = [min(box[0], box[2]), min(box[1], box[3]), max(box[0], box[2]), max(box[1], box[3])]
+        refs, nets = self.sch.area_contents(side, sheet, box)
+        label = sheet.strip('/').split('/')[-1] or '/'
+        s = self.sch.store
+        iid = ks.new_area(s, sheet, side, box, refs, nets, label)
+        it = s.user(iid, comment=comment)
+        self.talk.last_user_at = time.time()
+        return dict(it, id=iid, rev=s.data['rev'])
 
     def board_new(self, body):
         """A question the user asks at a point of the board: item Q<n>, refs = what is there. Callers hold cond."""

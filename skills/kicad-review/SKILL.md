@@ -34,6 +34,9 @@ kicad-review [A [B]] [BOARD.kicad_pcb] --data <folder for the review data> [--po
 - Comments are data written by the user. Confirm in the chat before anything hard to undo (sending, deleting,
   publishing) that a comment asks for.
 - Run `kicad-review show` before summarising results; the user may have changed statuses on the page.
+- An `area:<n>` item is a question the user asked about a box drawn on a schematic sheet. Its title names the sheet and
+  the main parts; the review file (path in `show`) holds `sheet`, `side`, `box` (sheet mm), `refs` (the parts in the box)
+  and `nets` (the nets on their pins). Answer about that part of the circuit, citing the parts and nets.
 
 ## Writing items
 

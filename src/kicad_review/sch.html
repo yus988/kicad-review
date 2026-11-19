@@ -48,6 +48,7 @@ a { color: var(--sub); }
 .k-label_changed { color: var(--lab); }
 .k-sheet_renamed { color: var(--lab); }
 .k-group { color: var(--grp); }
+.k-area { color: var(--ask); }
 .member.folded { color: var(--muted); }
 .folded-note { margin: 6px 0 2px; padding: 4px 8px; border-left: 3px solid var(--line); }
 .folded-note b { color: var(--muted); font-weight: 600; }
@@ -58,6 +59,8 @@ a { color: var(--sub); }
 .member { display: block; width: 100%; text-align: left; white-space: normal; padding: 3px 7px; }
 .member small { display: block; color: var(--muted); white-space: pre-wrap; }
 .member.hl { background: #ffe6f6; border-color: var(--sel); }
+.members.chips { flex-direction: row; flex-wrap: wrap; gap: 4px; }    /* the parts of an area question */
+.members.chips .member { width: auto; min-width: 3.5em; text-align: center; }
 .dslinks a { margin-right: 10px; }
 
 /* drawing */
@@ -81,6 +84,19 @@ a { color: var(--sub); }
 .seg button:last-child { border-radius: 0 4px 4px 0; }
 #helpTip { display: inline-flex; align-items: center; justify-content: center; width: 1.7em; height: 1.7em; border: 1px solid var(--line);
   border-radius: 50%; color: var(--muted); cursor: help; font-weight: 700; user-select: none; }
+/* an area question (Ctrl+drag on the drawing): the comment box next to the box drawn */
+#areaPop { width: 340px; display: flex; flex-direction: column; gap: 6px; }
+#areaPop[hidden] { display: none; }
+#areaPop .ap-h { font-weight: 600; }
+#areaPop .ap-refs { color: var(--muted); font-size: 12px; max-height: 3.6em; overflow: auto; }
+#areaPop textarea { font: inherit; resize: vertical; min-height: 4.5em; padding: 4px 6px; border: 1px solid var(--line); border-radius: 4px; }
+#areaPop .ap-btns { display: flex; gap: 6px; }
+#areaPop .ap-btns .grow { flex: 1; }
+#areaPop .ap-btns button { min-width: 5em; }
+.area-info { color: var(--muted); font-size: 12px; margin: 4px 0; }
+.area-btns { display: flex; gap: 6px; margin: 6px 0; }
+.area-btns button { min-width: 8em; }
+.area-nets { color: var(--muted); font-size: 12px; word-break: break-all; }
 #pairPop { width: auto; color: var(--muted); font-size: 12px; display: flex; gap: 6px; align-items: center; }
 #pairPop[hidden] { display: none; }
 #pairPop select { font: inherit; width: 14em; padding: 1px 2px; border: 1px solid var(--line); border-radius: 4px; color: var(--text); }
@@ -118,6 +134,8 @@ svg.arrows .hit { stroke: transparent; stroke-width: 14; fill: none; }
 svg.arrows .frame { fill: transparent; stroke-width: 1.2; }
 svg.arrows .glow { fill: none; stroke-opacity: .35; stroke-linecap: round; stroke-linejoin: round; }
 svg.arrows .frame.info { stroke-dasharray: 5 3; }
+svg.arrows .frame.area { stroke-dasharray: 7 4; pointer-events: visibleStroke; }   /* the inside still pans */
+svg.arrows .pending { fill: rgba(122,79,201,.07); stroke: var(--ask); stroke-width: 1.5; stroke-dasharray: 6 4; pointer-events: none; }
 svg.arrows g.sel .shaft { stroke-width: 3.2; }
 svg.arrows g.sel .halo { stroke-width: 6.5; }
 svg.arrows g.sel .frame { stroke-width: 2.4; }
@@ -199,6 +217,12 @@ svg.arrows text.ref { font-size: 12px; stroke-width: 4px; }
   </div>
 </section>
 </div>
+<div id="areaPop" class="panel" hidden>
+  <div class="ap-h" data-i18n="sch.area.head">Ask about this area</div>
+  <div class="ap-refs" id="areaRefs"></div>
+  <textarea id="areaText" spellcheck="false" data-i18n-placeholder="sch.area.ph"></textarea>
+  <div class="ap-btns"><span class="grow"></span><button id="areaCancel" data-i18n="sch.area.cancel">Cancel</button><button id="areaSend" class="on" data-i18n="send">Send</button></div>
+</div>
 <div id="pairPop" class="panel" hidden><span data-i18n="sch.pair">Pair</span>
   <span class="tag a">A</span><select id="pairA"></select>⇔<span class="tag b">B</span><select id="pairB"></select></div>
 <script src="/i18n.js"></script>
@@ -209,7 +233,7 @@ const { $, esc, store, api, notice, DONE, ST_NAME, ST_LINE, BTN_LABEL } = Review
 const KIND_COLOR = { comp_added: '--add', comp_removed: '--rem', comp_changed: '--chg', pin_moved: '--pin',
   net_added: '--pin', net_removed: '--pin', net_renamed: '--pin', sheet_added: '--add', sheet_removed: '--rem', part: '--sel', group: '--grp',
   label_changed: '--lab', sheet_renamed: '--lab' };
-const KIND_LABEL = Object.fromEntries(['comp_added', 'comp_removed', 'comp_changed', 'pin_moved', 'group', 'label_changed', 'sheet_renamed']
+const KIND_LABEL = Object.fromEntries(['comp_added', 'comp_removed', 'comp_changed', 'pin_moved', 'group', 'label_changed', 'sheet_renamed', 'area']
   .map(k => [k, t('kind.' + k)]));
 const ONLY_SIDE = { comp_added: 'b', comp_removed: 'a' };   // where the thing exists
 // drawing colours of a reviewed entry (white background) and the mark at the arrow tail
@@ -270,6 +294,14 @@ function buildEntries() {
   S.items.forEach((it, i) => { byKey[it.key] = i; });
   const foldedInto = {};          // pin item key folded into a label change -> that label item's index
   S.items.forEach((it, i) => (it.folds || []).forEach(k => { foldedInto[k] = i; }));
+  // the user's area questions (Ctrl+drag; items area:<n> of the review file) first: they wait for an answer
+  const areas = Object.keys(R.items).filter(k => k.startsWith('area:') && R.items[k].box && sheetInfo(R.items[k].sheet))
+    .sort((a, b) => a.slice(5) - b.slice(5));
+  for (const key of areas) {
+    const it = R.items[key];
+    E.push({ key, kind: 'area', group: null, items: [], sheet: it.sheet, title: it.title || key, area: it,
+             detail: (it.refs || []).join(' '), ds: { a: null, b: null }, tag: t('sch.area.tag', { n: key.slice(5) }) });
+  }
   const taken = new Set();
   for (const g of R.groups || []) {
     const members = g.keys.map(k => byKey[k]).filter(i => i !== undefined && !taken.has(i));
@@ -426,6 +458,7 @@ function linkRow(ds, ref) {
 function boardRefs(e) {
   // 'A:<ref>' is a part of A only whose reference names another part in B: not on the board
   const onBoard = r => r && !r.startsWith('A:');
+  if (e.kind === 'area') return e.area.side === 'b' || S.single ? (e.area.refs || []).filter(onBoard).slice(0, 8) : [];
   if (e.kind === 'part') return (S.items[e.items[0]].refs || []).filter(onBoard).slice(0, 1);
   const out = [];
   for (const i of e.items) for (const m of S.items[i].b || []) if (onBoard(m.ref) && !out.includes(m.ref)) out.push(m.ref);
@@ -446,7 +479,7 @@ function renderDetail() {
   box.dataset.key = e.key;
   box.innerHTML = '';
   const head = document.createElement('div'); head.className = 't k-' + e.kind; head.textContent = e.title; box.appendChild(head);
-  const side = !e.group && S.items[e.items[0]].side;     // a part of one side (two designs)
+  const side = !e.group && e.kind !== 'area' && S.items[e.items[0]].side;     // a part of one side (two designs)
   if (side) {
     head.textContent = ' ' + e.title.replace(/^[AB] /, '');
     const tag = document.createElement('span'); tag.className = 'tag ' + side; tag.textContent = side.toUpperCase(); head.prepend(tag);
@@ -483,6 +516,8 @@ function renderDetail() {
       list.appendChild(b);
     }
     box.appendChild(list);
+  } else if (e.kind === 'area') {
+    areaDetail(box, e);
   } else {
     const it = S.items[e.items[0]];
     if (it.detail) { const pre = document.createElement('pre'); pre.textContent = it.detail; box.appendChild(pre); }
@@ -769,6 +804,15 @@ function drawArrows() {              // arrows + field frames in screen pixels, 
           list.push({ x: x0 - 2, y: y0 - 2, entries: [n], items: [i], color, prio: STATUS_PRIO[st] || 3, mark: ST_ARROW[st] || '' });
         }
       });
+      E.forEach((e, n) => {          // area questions: a dashed box on their sheet and side, an arrow at its corner
+        if (e.kind !== 'area' || e.sheet !== sheet || e.area.side !== k || n !== sel && !matches(e)) return;
+        const b = e.area.box, x0 = view.x + b[0] * view.s, y0 = view.y + b[1] * view.s;
+        const x1 = view.x + b[2] * view.s, y1 = view.y + b[3] * view.s;
+        if (x1 < -40 || y1 < -40 || x0 > W + 40 || y0 > H + 40) return;
+        const st = rv(e.key).status || '', color = ST_DRAW[st] || css('--ask');
+        frames.push({ x0, y0, x1, y1, n, i: -1, color, area: true });
+        list.push({ x: x0 - 2, y: y0 - 2, entries: [n], items: [], color, prio: STATUS_PRIO[st] || 3, mark: ST_ARROW[st] || '', tag: e.tag });
+      });
     }
     const merged = [];
     for (const m of list) {
@@ -809,7 +853,7 @@ function drawArrows() {              // arrows + field frames in screen pixels, 
       if (st) g.setAttribute('class', st);
       const x = f.x0 - 1.5, y = f.y0 - 1.5, w = f.x1 - f.x0 + 3, h = f.y1 - f.y0 + 3;
       g.innerHTML = (st.startsWith('sel') ? '<rect class="glow" x="' + (x - 2) + '" y="' + (y - 2) + '" width="' + (w + 4) + '" height="' + (h + 4) + '" rx="3" stroke-width="5" stroke="' + f.color + '"/>' : '') +
-        '<rect class="frame' + (f.info ? ' info' : '') + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="2" stroke="' + f.color + '"/>';
+        '<rect class="frame' + (f.info ? ' info' : '') + (f.area ? ' area' : '') + '" x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="2" stroke="' + f.color + '"/>';
       pick(g, [f.n], [f.i]);
       layers[st.startsWith('sel') ? 'sel' : st || 'plain'].push(g);
     }
@@ -821,7 +865,7 @@ function drawArrows() {              // arrows + field frames in screen pixels, 
       const shaft = 'M' + tx + ' ' + ty + ' L' + (m.x - 4) + ' ' + (m.y - 4);
       // label at the tail: the references this arrow stands for (selected members only, when selected)
       const mine = st.startsWith('sel') ? m.items.filter(i => itemEntry[i] === sel || i === hoverItem) : [];
-      let label = mine.length ? [...new Set(mine.map(itemRef))].join(' ') : (m.entries.length > 1 ? String(m.entries.length) : '');
+      let label = mine.length ? [...new Set(mine.map(itemRef))].join(' ') : (m.entries.length > 1 ? String(m.entries.length) : m.tag || '');
       if (m.mark) label = m.mark + (label ? ' ' + label : '');
       g.innerHTML =
         '<path class="hit" d="M' + tx + ' ' + ty + ' L' + m.x + ' ' + m.y + '"/>' +
@@ -838,6 +882,14 @@ function drawArrows() {              // arrows + field frames in screen pixels, 
       layers[st.startsWith('sel') ? 'sel' : st || 'plain'].push(g);
     }
     for (const g of layers.dim.concat(layers.plain, layers.sel)) svg.appendChild(g);
+    const pa = pendingArea;          // the area being drawn or asked about
+    if (pa && pa.sheet === sheet && paneSides(p).includes(pa.side)) {
+      const r = document.createElementNS(NS, 'rect');
+      r.setAttribute('class', 'pending');
+      r.setAttribute('x', view.x + pa.box[0] * view.s); r.setAttribute('y', view.y + pa.box[1] * view.s);
+      r.setAttribute('width', (pa.box[2] - pa.box[0]) * view.s); r.setAttribute('height', (pa.box[3] - pa.box[1]) * view.s);
+      svg.appendChild(r);
+    }
   });
 }
 
@@ -1002,17 +1054,22 @@ function attachPanZoom(p) {
     requestView();
   }, { passive: false });
   let drag = null;
+  // a drag pans; with Ctrl or Shift it draws an area to ask about (areaDrag). A click (no drag) selects the part there,
+  // on empty space clears the selection; Ctrl+click goes down into a sheet box, or on a part also opens its datasheet in
+  // the datasheet tab (Review.openDatasheet)
   p.addEventListener('pointerdown', e => {
     if (e.button !== 0) return;
-    if (e.ctrlKey) { const hit = subAt(p, e); if (hit) { setSheet(hit, true); return; } }
-    drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y };
+    const area = e.ctrlKey || e.metaKey || e.shiftKey;
+    drag = { x: e.clientX, y: e.clientY, vx: view.x, vy: view.y, area };
     p.setPointerCapture(e.pointerId);
-    p.classList.add('drag');
+    if (!area) p.classList.add('drag');
   });
-  // a click (no drag): selects the part there, on empty space clears the selection; Ctrl+click on a part also opens its
-  // datasheet in the datasheet tab (Review.openDatasheet; Ctrl+click on a sheet box goes down, in pointerdown)
   p.addEventListener('pointerup', e => {
-    if (!drag || Math.hypot(e.clientX - drag.x, e.clientY - drag.y) >= 4) return;
+    if (!drag) return;
+    const moved = Math.hypot(e.clientX - drag.x, e.clientY - drag.y) >= 4;
+    if (drag.area && moved) { areaDrag(p, drag, e, true); return; }
+    if (moved) return;
+    if (e.ctrlKey || e.metaKey) { const sub = subAt(p, e); if (sub) { setSheet(sub, true); return; } }
     const hit = partAt(p, e), n = hit ? partEntry(hit.k, hit.ref) : -1;
     if (n >= 0) select(n, false);
     else if (!e.ctrlKey && !e.metaKey) clearSelection();
@@ -1022,6 +1079,10 @@ function attachPanZoom(p) {
     else if (!Review.openDatasheet(ds, hit.ref)) notice(p, t('sch.ds.failed', { ref: hit.ref }), e);
   });
   p.addEventListener('pointermove', e => {
+    if (drag && drag.area) {
+      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) >= 4) areaDrag(p, drag, e, false);
+      return;
+    }
     if (drag) {
       view.x = drag.vx + e.clientX - drag.x;
       view.y = drag.vy + e.clientY - drag.y;
@@ -1039,6 +1100,104 @@ function attachPanZoom(p) {
   p.addEventListener('dblclick', e => { const hit = subAt(p, e); if (hit) setSheet(hit, true); });
 }
 
+// ---------------------------------------------------------------- area questions (Ctrl / Shift + drag)
+// the box being drawn or asked about, in sheet mm on the side the pane shows (overlay: B, on top; flip: the side on show)
+let pendingArea = null;
+function areaSide(p) { return S.single ? 'a' : p.dataset.sides === 'ab' ? 'b' : p.dataset.sides === 'flip' ? flipSide : p.dataset.sides; }
+function areaDrag(p, drag, e, done) {
+  const [ax, ay] = sheetPoint(p, { clientX: drag.x, clientY: drag.y }), [bx, by] = sheetPoint(p, e);
+  pendingArea = { side: areaSide(p), sheet, box: [Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)] };
+  drawArrows();
+  if (done) openAreaPop(e);
+}
+function areaRefs(a) {             // the parts the server will name: their box meets the area (kireview_sch.area_contents)
+  const b = a.box;
+  return (S.parts[a.side] || []).filter(q => q.sheet === a.sheet && q.box[0] <= b[2] && q.box[2] >= b[0] && q.box[1] <= b[3] && q.box[3] >= b[1])
+    .map(q => q.ref).sort((x, y) => x.localeCompare(y, undefined, { numeric: true }));
+}
+function openAreaPop(e) {
+  const pop = $('areaPop'), refs = areaRefs(pendingArea);
+  $('areaRefs').textContent = refs.length ? t('sch.area.parts', { n: refs.length, refs: refs.join(' ') }) : t('sch.area.noparts');
+  pop.hidden = false;
+  pop.style.left = Math.max(8, Math.min(e.clientX + 12, innerWidth - pop.offsetWidth - 8)) + 'px';
+  pop.style.top = Math.max(8, Math.min(e.clientY + 12, innerHeight - pop.offsetHeight - 8)) + 'px';
+  $('areaText').focus();
+}
+function closeAreaPop() {
+  $('areaPop').hidden = true;
+  pendingArea = null;
+  drawArrows();
+}
+async function sendArea() {
+  const text = $('areaText').value.trim(), a = pendingArea;
+  if (!a) return;
+  if (!text) { notice($('areaSend'), t('sch.area.empty')); return; }
+  try {
+    const r = await api('/api/sch/area', { sheet: a.sheet, side: a.side, box: a.box, comment: text });
+    notice($('areaSend'), t('sent'));
+    $('areaText').value = '';
+    closeAreaPop();
+    R.items[r.id] = stripId(r);
+    buildEntries();
+    if (EK[r.id] !== undefined) select(EK[r.id], false);
+  } catch (err) { notice($('areaSend'), t('error', { msg: err.message })); }
+}
+$('areaSend').onclick = sendArea;
+$('areaCancel').onclick = closeAreaPop;
+$('areaText').addEventListener('keydown', e => { if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); sendArea(); } });
+
+function zoomToArea(e) {
+  if (e.sheet !== sheet && sheetInfo(e.sheet)) setSheet(e.sheet, false);
+  const b = e.area.box, [pw, ph] = paneSize();
+  view.s = Math.min(200, Math.max(0.2, Math.min(pw / ((b[2] - b[0]) * 1.4 + 10), ph / ((b[3] - b[1]) * 1.4 + 10))));
+  view.x = pw / 2 - (b[0] + b[2]) / 2 * view.s;
+  view.y = ph / 2 - (b[1] + b[3]) / 2 * view.s;
+  applyView();
+}
+
+// the detail of an area question: where, the parts (each moves the drawing to it) and nets in it, show / delete
+function areaDetail(box, e) {
+  const a = e.area, w = a.box[2] - a.box[0], h = a.box[3] - a.box[1];
+  const info = document.createElement('div'); info.className = 'area-info';
+  info.textContent = t('sch.area.where', { sheet: sheetLabel(a.sheet), w: w.toFixed(1), h: h.toFixed(1) }) + (S.single ? '' : ' · ' + a.side.toUpperCase());
+  box.appendChild(info);
+  const btns = document.createElement('div'); btns.className = 'area-btns';
+  const show = document.createElement('button'); show.textContent = t('sch.area.show'); show.onclick = () => zoomToArea(e);
+  const del = document.createElement('button'); del.textContent = t('sch.area.delete');
+  del.onclick = async () => {        // a second press within 3 s deletes
+    if (!del.dataset.sure) {
+      del.dataset.sure = '1';
+      del.textContent = t('sch.area.delete.sure');
+      setTimeout(() => { delete del.dataset.sure; del.textContent = t('sch.area.delete'); }, 3000);
+      return;
+    }
+    try {
+      await api('/api/sch/area?id=' + encodeURIComponent(e.key), undefined, 'DELETE');
+      delete R.items[e.key];
+      sel = null;
+      buildEntries(); renderNav(); renderList(); drawArrows(); renderDetail();
+    } catch (err) { notice(del, t('error', { msg: err.message })); }
+  };
+  btns.append(show, del);
+  box.appendChild(btns);
+  const refs = a.refs || [];
+  const hd = document.createElement('h4'); hd.textContent = t('sch.area.partsh', { n: refs.length }); box.appendChild(hd);
+  const list = document.createElement('div'); list.className = 'members chips';
+  for (const ref of refs) {
+    const b = document.createElement('button');
+    b.className = 'member k-part';
+    b.textContent = ref;
+    b.onclick = () => { const q = (S.parts[a.side] || []).find(q => q.ref === ref && q.sheet === a.sheet); if (q) zoomTo(q.box); };
+    list.appendChild(b);
+  }
+  box.appendChild(list);
+  if ((a.nets || []).length) {
+    const hn = document.createElement('h4'); hn.textContent = t('sch.area.netsh', { n: a.nets.length }); box.appendChild(hn);
+    const nets = document.createElement('div'); nets.className = 'area-nets'; nets.textContent = a.nets.join(', ');
+    box.appendChild(nets);
+  }
+}
+
 function setSheet(name, refit) {
   sheet = name;
   renderNav();
@@ -1051,7 +1210,8 @@ function setSheet(name, refit) {
 function select(n, zoom) {
   if (n === undefined || n < 0 || !E[n]) return;
   sel = n;
-  if (zoom) zoomToItems(E[n].items.length ? E[n].items : (E[n].folded || []).map(f => f.into));
+  if (zoom && E[n].kind === 'area') zoomToArea(E[n]);
+  else if (zoom) zoomToItems(E[n].items.length ? E[n].items : (E[n].folded || []).map(f => f.into));
   if (filterText && !matches(E[n])) { filterText = ''; $('filter').value = ''; }
   renderNav();
   renderList();
@@ -1336,6 +1496,7 @@ for (const k of ['a', 'b']) {
 }
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
+  if (!$('areaPop').hidden) { closeAreaPop(); return; }
   if (!$('cmp').hidden) { $('cmp').hidden = true; return; }
   if (!$('pairPop').hidden) { $('pairPop').hidden = true; return; }
   if (!/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) clearSelection();
