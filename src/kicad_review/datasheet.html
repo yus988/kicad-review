@@ -17,6 +17,7 @@ body { display: flex; flex-direction: column; font: 13px system-ui, -apple-syste
 #doc { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 #msg { position: absolute; left: 0; right: 0; top: 0; padding: 24px; color: var(--muted); }
 #msg[hidden] { display: none; }
+#msg a { display: inline-block; margin-top: 10px; color: var(--accent); word-break: break-all; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -30,8 +31,9 @@ body { display: flex; flex-direction: column; font: 13px system-ui, -apple-syste
 // back to the review page is cut here (a datasheet site could use it to move the review page elsewhere). Only web pages
 // (http, https) and the
 // datasheet files the server serves (/api/datasheet/...) are shown. A web link goes through /api/datasheet-url: the
-// server shows a PDF from here (many makers' sites refuse to be shown in a frame), anything else from the link itself;
-// a site that still refuses is opened with the bar's link.
+// server gets the PDF and shows it from here, as many makers' sites refuse to be shown in a frame (and the browser
+// tells the page nothing when a site refuses, so it is not tried); when it gets none (a web page, or a site that does
+// not answer a server), the tab shows the link to open.
 'use strict';
 try { window.opener = null; } catch (_) {}
 const q = new URLSearchParams(location.search), u = q.get('u') || '', ref = q.get('r') || '', name = q.get('n') || '';
@@ -51,7 +53,19 @@ if (ok) {
   msg.textContent = t('ds.loading');
   msg.hidden = false;
   doc.addEventListener('load', () => { msg.hidden = true; });
-  doc.src = to.origin === location.origin ? to.href : '/api/datasheet-url?u=' + encodeURIComponent(u.trim());
+  const pdf = '/api/datasheet-url?u=' + encodeURIComponent(u.trim());
+  if (to.origin === location.origin) doc.src = to.href;
+  else fetch(pdf + '&probe=1').then(r => r.ok ? r.json() : {}).catch(() => ({})).then(d => {
+    if (d.pdf) { doc.src = pdf; return; }
+    doc.remove();                      // no PDF from here: the link itself, to open in a tab of its own
+    msg.textContent = t('ds.nopdf', { host: to.host });
+    const link = document.createElement('a');
+    link.href = to.href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = to.href;
+    msg.append(document.createElement('br'), link);
+  });
 } else {
   doc.remove();
   document.getElementById('direct').remove();

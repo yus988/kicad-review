@@ -419,6 +419,22 @@ class DatasheetFetchTest(unittest.TestCase):
         self.assertEqual(len(self.hits), n)
         self.assertIsNone(kc.fetch_datasheet('http://127.0.0.1:1/x.pdf', self.dir))   # nothing there
 
+    def test_route(self):
+        """/api/datasheet-url: the PDF from here, else 404; probe tells which, and the tab shows the link itself."""
+        base = self.base
+
+        class Sch:
+            def datasheet_urls(self):
+                return {base + 'a.pdf', base + 'page'}
+        app = kr.App.__new__(kr.App)
+        app.sch, app.data = Sch(), self.dir
+        self.assertEqual(app.datasheet_url(base + 'a.pdf', True), (200, {'pdf': True}))
+        code, body, ctype, _ = app.datasheet_url(base + 'a.pdf')
+        self.assertEqual((code, body[:5], ctype), (200, b'%PDF-', 'application/pdf'))
+        self.assertEqual(app.datasheet_url(base + 'page', True), (200, {'pdf': False}))
+        self.assertEqual(app.datasheet_url(base + 'page')[0], 404)          # no redirect into the frame
+        self.assertEqual(app.datasheet_url(base + 'b.pdf', True)[0], 404)   # links of the schematic only
+
 
 if __name__ == '__main__':
     unittest.main()

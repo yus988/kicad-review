@@ -247,22 +247,24 @@ class App:
             p = self.sch.datasheet(parts[3], urllib.parse.unquote(parts[4])) if self.sch and len(parts) == 5 else None
             return self._file(p, kc.DATASHEET_TYPES.get(os.path.splitext(p or '')[1].lower(), 'application/octet-stream'))
         if path == '/api/datasheet-url':
-            return self.datasheet_url(one('u').strip())
+            return self.datasheet_url(one('u').strip(), one('probe') == '1')
         if path == '/api/projects':
             return 200, kc.list_projects(one('dir'))
         if path == '/api/refs':
             return 200, kc.list_refs(one('path'))
         return None
 
-    def datasheet_url(self, u):
-        """The datasheet tab's frame for a datasheet given as a web link of the loaded schematic (no other link): the
-        PDF from here (kc.fetch_datasheet), else a redirect to the link itself."""
+    def datasheet_url(self, u, probe=False):
+        """A datasheet given as a web link of the loaded schematic (no other link) as a PDF from here
+        (kc.fetch_datasheet), for the datasheet tab's frame; 404 when the link gives none. With probe, only whether
+        there is one ({pdf}): the tab then shows the link itself, as many makers' sites refuse to be shown inside
+        another page and the browser tells the page nothing when it refuses."""
         if not self.sch or u not in self.sch.datasheet_urls():
             return 404, {'error': 'not a datasheet link of the loaded schematic'}
         p = kc.fetch_datasheet(u, os.path.join(self.data, 'cache', 'datasheets'))
-        if p:
-            return self._file(p, 'application/pdf', True)
-        return 302, b'', 'text/plain', False, {'Location': u}
+        if probe:
+            return 200, {'pdf': bool(p)}
+        return self._file(p, 'application/pdf', True)
 
     @staticmethod
     def _file(p, ctype, cache=False):
