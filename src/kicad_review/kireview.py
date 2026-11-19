@@ -129,7 +129,7 @@ class App:
         sch = None
         if st:
             sd = st['sides']
-            sch = {'page': st['review']['page'], 'single': st['single'],
+            sch = {'page': st['review']['page'], 'single': st['single'], 'stale': self.sch.stale(),
                    'title': sd['a']['short'] if st['single'] else sd['a']['short'] + ' → ' + sd['b']['short']}
         board = {'page': self.board_store.page, 'stem': self.board.stem,
                  'path': self.board.path.replace('\\', '/')} if self.board else None

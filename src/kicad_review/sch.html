@@ -97,6 +97,9 @@ a { color: var(--sub); }
 .area-btns { display: flex; gap: 6px; margin: 6px 0; }
 .area-btns button { min-width: 8em; }
 .area-nets { color: var(--muted); font-size: 12px; word-break: break-all; }
+/* the schematic files were saved again (api/info sch.stale): one press loads them; hidden it keeps its place */
+#schNew { background: var(--sev-should); border-color: var(--sev-should); color: #fff; font-weight: 700; min-width: 8em; }
+#schNew.off { visibility: hidden; }
 #pairPop { width: auto; color: var(--muted); font-size: 12px; display: flex; gap: 6px; align-items: center; }
 #pairPop[hidden] { display: none; }
 #pairPop select { font: inherit; width: 14em; padding: 1px 2px; border: 1px solid var(--line); border-radius: 4px; color: var(--text); }
@@ -160,6 +163,7 @@ svg.arrows text.ref { font-size: 12px; stroke-width: 4px; }
   <button id="cmpBtn" data-i18n="sch.cmp">Choose a schematic</button>
   <span id="status"></span>
   <span class="grow"></span>
+  <button id="schNew" class="off" data-i18n="sch.new" data-i18n-title="sch.new.title">Update the schematic</button>
   <span id="presence"></span>
   <button id="pageNew" class="off" data-i18n="page.new" data-i18n-title="page.new.title">Reload page</button>
 </header>
@@ -1347,6 +1351,20 @@ document.addEventListener('keydown', e => {
   if (e.code === 'Space' && mode === 'flip' && !S.single) { e.preventDefault(); flip(); }
   else if (e.key === 'Backspace' || (e.altKey && e.key === 'ArrowLeft')) { e.preventDefault(); goUp(); }
 });
+// the files were saved in KiCad: load them again (the same review, so the view and the selection stay)
+$('schNew').onclick = async e => {
+  const btn = e.currentTarget;
+  if (!S || btn.disabled) return;
+  btn.disabled = true;
+  btn.textContent = t('sch.new.busy');
+  following = true;                  // the reload is ours: the info poll must not load it a second time
+  try {
+    load(await api('/api/sch/reload', {}));
+    btn.classList.add('off');
+    notice(btn, t('sch.reloaded', { n: E.length }));
+  } catch (err) { notice(btn, t('failed', { msg: err.message })); }
+  finally { btn.disabled = false; btn.textContent = t('sch.new'); following = false; }
+};
 $('reload').onclick = async e => {
   const btn = e.currentTarget;
   if (!S) return;
@@ -1511,6 +1529,7 @@ Review.arrowKeys(() => !$('cmp').hidden || !$('pairPop').hidden, d => {
 });
 let boardOn = null, following = false;
 Review.onInfo(i => {
+  if (!$('schNew').disabled) $('schNew').classList.toggle('off', !(S && i.sch && i.sch.stale && i.sch.page === S.review.page));
   if (!!i.board !== boardOn) { boardOn = !!i.board; renderDetail(); }   // the links to the board
   // the server holds another schematic review than this page (restarted on a renamed folder, or another tab opened
   // another one): load it, or the page would keep writing to a review the server no longer has

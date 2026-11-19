@@ -233,6 +233,23 @@ class AreaTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.diff.area_contents('a', '/nope/', [0, 0, 1, 1])
 
+    def test_stale(self):
+        """Diff.stale: a folder side whose files changed or went since it was loaded."""
+        p = os.path.join(self.dir, 'a.kicad_sch')
+        with open(p, 'w', encoding='utf-8') as f:
+            f.write('(kicad_sch)')
+        st = os.stat(p)
+        self.diff.sides['a']['info'] = {'folder': self.dir, 'stamp': [['a.kicad_sch', st.st_mtime_ns, st.st_size]]}
+        self.assertFalse(self.diff.stale())
+        with open(p, 'a', encoding='utf-8') as f:
+            f.write('
+')                                                # saved again
+        self.assertTrue(self.diff.stale())
+        self.diff.sides['a']['info'] = {'folder': self.dir, 'stamp': [['gone.kicad_sch', 1, 1]]}
+        self.assertTrue(self.diff.stale())
+        self.diff.sides['a']['info'] = {'folder': self.dir}               # a git side: a fixed version
+        self.assertFalse(self.diff.stale())
+
     def test_item(self):
         s = ks.ReviewStore(os.path.join(self.dir, 'r.json'), 'sch:x', 'sch')
         refs = ['C1', 'C2', 'C3', 'R1', 'R2', 'R3', 'R4', 'R5', 'TP1', 'U2', 'Q1']

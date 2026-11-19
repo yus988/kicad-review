@@ -435,7 +435,8 @@ def snapshot(sp):
                 continue    # sheet file outside the project folder: not copied (limit, see README)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copy2(os.path.join(base, rel), dst)
-    info = {'kind': 'folder', 'label': orig_root.replace('\\', '/'), 'readonly': False, 'open': orig_root,
+    # stamp: the files read and their versions, to tell when they are saved again (Diff.stale)
+    info = {'kind': 'folder', 'label': orig_root.replace('\\', '/'), 'readonly': False, 'open': orig_root, 'stamp': stamp,
             'short': os.path.basename(base), 'folder': base,
             'disp': t('folder.disp', name=os.path.basename(base), state=folder_state(base)['text'])}
     return d, os.path.join(src, os.path.basename(orig_root)), info
@@ -1360,6 +1361,20 @@ class Diff:
         """Two designs: list the differences (True) or only put the drawings side by side (False)."""
         self.set_option('show_diff', bool(on))
         return self.load()
+
+    def stale(self):
+        """A folder side whose schematic files changed (or went) since it was loaded, saved in KiCad: the page offers
+        to load it again. A git side is a fixed version."""
+        for s in list(self.sides.values()):
+            info = s['info']
+            for rel, mtime, size in info.get('stamp') or []:
+                try:
+                    st = os.stat(os.path.join(info['folder'], rel))
+                except OSError:
+                    return True
+                if st.st_mtime_ns != mtime or st.st_size != size:
+                    return True
+        return False
 
     def area_contents(self, side, sheet, box):
         """What is in a box (sheet mm) of a sheet of one side: the parts whose box meets it, in reference order, and the
