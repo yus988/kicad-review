@@ -19,8 +19,9 @@
     if (!r.ok) throw new Error(d.error || r.statusText);
     return d;
   }
-  function notice(el, text) {            // a short confirmation right next to the control that was used
-    const r = el.getBoundingClientRect();
+  // a short confirmation right next to the control that was used, or next to the pointer (at: a pointer event)
+  function notice(el, text, at) {
+    const r = at ? { left: at.clientX - 8, right: at.clientX + 8, top: at.clientY - 8, height: 16 } : el.getBoundingClientRect();
     const n = document.createElement('div');
     n.className = 'notice';
     n.textContent = text;
@@ -518,6 +519,6 @@
     STATUS_BTNS, BTN_LABEL, ST_NAME, ST_MARK, ST_LINE, DONE, SEVERITIES, SEV_LABEL, SEV_MEANING, OWNER_LABEL,
     OWNER_MEANING, stClass, isWaiting, isUnread,
     filters, sevChip, ownerChip, rowHtml, groupHtml, neighbor, askHtml, notesHtml, msgsHtml, threadHtml,
-    openFigure, closeFigure, figureOpen, bindFigures, footer, docks, arrowKeys, place,
+    openFigure, closeFigure, figureOpen, bindFigures, footer, docks, arrowKeys, place, openDatasheet,
   };
 })();

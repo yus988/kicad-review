@@ -961,6 +961,16 @@ function partAt(p, e) {         // smallest part box under the pointer on the pa
   return null;
 }
 
+// the Datasheet field of a part on side k: its own part item, else an item of that part (a change) that has one
+let itemsByKey = null;
+function partDatasheet(k, ref) {
+  if (!itemsByKey || itemsByKey.s !== S) itemsByKey = { s: S, map: new Map(S.items.map(it => [it.key, it])) };
+  const own = itemsByKey.map.get(S.single ? 'comp:' + ref : 'part:' + k + ':' + ref);
+  const it = own && own.ds && (own.ds[k] || own.ds.a || own.ds.b) ? own
+    : S.items.find(it => (it.refs || []).includes(ref) && it.ds && (it.ds[k] || it.ds.a || it.ds.b));
+  return it ? it.ds[k] || it.ds.b || it.ds.a : null;
+}
+
 // entry for a part clicked in the drawing: a change (or group) marking it on that side and sheet, else the part itself
 function partEntry(k, ref) {
   const n = E.findIndex(e => e.kind !== 'part' && e.items.some(i => {
@@ -990,11 +1000,17 @@ function attachPanZoom(p) {
     p.setPointerCapture(e.pointerId);
     p.classList.add('drag');
   });
-  p.addEventListener('pointerup', e => {     // a click (no drag): selects the part there, on empty space clears the selection
-    if (!drag || Math.hypot(e.clientX - drag.x, e.clientY - drag.y) >= 4 || e.ctrlKey) return;
+  // a click (no drag): selects the part there, on empty space clears the selection; Ctrl+click on a part also opens its
+  // datasheet in the datasheet tab (Review.openDatasheet; Ctrl+click on a sheet box goes down, in pointerdown)
+  p.addEventListener('pointerup', e => {
+    if (!drag || Math.hypot(e.clientX - drag.x, e.clientY - drag.y) >= 4) return;
     const hit = partAt(p, e), n = hit ? partEntry(hit.k, hit.ref) : -1;
     if (n >= 0) select(n, false);
-    else clearSelection();
+    else if (!e.ctrlKey && !e.metaKey) clearSelection();
+    if (!hit || !(e.ctrlKey || e.metaKey)) return;
+    const ds = partDatasheet(hit.k, hit.ref);
+    if (!ds) notice(p, t('sch.ds.none', { ref: hit.ref }), e);
+    else if (!Review.openDatasheet(ds)) notice(p, t('sch.ds.failed', { ref: hit.ref }), e);
   });
   p.addEventListener('pointermove', e => {
     if (drag) {
@@ -1005,7 +1021,7 @@ function attachPanZoom(p) {
     }
     const hit = subAt(p, e), part = partAt(p, e);
     p.classList.toggle('hot', !!hit || !!part);
-    p.title = part ? part.ref : '';
+    p.title = !part ? '' : partDatasheet(part.k, part.ref) ? t('sch.part.ds', { ref: part.ref }) : part.ref;
     document.querySelectorAll('svg.marks rect.sub').forEach(r => r.classList.toggle('hot', r.dataset.path === hit));
   });
   const end = () => { drag = null; p.classList.remove('drag'); };
