@@ -127,7 +127,7 @@ const S = {
   hl: null,                    // {ref, bbox}: a part shown from #ref=, until the next click on the board or a selection
   padText: store.get('kireview.padText') !== '0',
   fills: store.get('kireview.fills') !== '0',
-  court: store.get('kireview.court') === '1',
+  court: store.get('kireview.courtyards') !== '0',   // F.Courtyard and B.Courtyard in every view (on by default)
   view: { s: 0, tx: 0, ty: 0 },   // screen px = board mm * s + t
   layers: null,                // {preset, active: 'F' | 'B' | 'In1' ..., vis: [layer names]}
 };
@@ -143,13 +143,21 @@ const fillImgs = {};           // copper layer name -> <img> with its zone fills
 function copperKeys() { return S.board.copper.map(n => n === 'F.Cu' ? 'F' : n === 'B.Cu' ? 'B' : n.replace('.Cu', '')); }
 function innerKeys() { return copperKeys().filter(k => k !== 'F' && k !== 'B'); }
 
-// presets F / B / In leave the courtyards out (Courtyards or the layer boxes turn them on); all has every layer
+// the courtyards of both sides follow Courtyards in every view (the layer boxes can still take one out)
+const COURTS = ['F.Courtyard', 'B.Courtyard'];
+function courtLayers() { return S.board.layers.map(l => l.name).filter(n => COURTS.includes(n)); }
+function withCourts(vis) {
+  const v = vis.filter(n => !COURTS.includes(n));
+  return S.court ? [...v, ...courtLayers()] : v;
+}
+
+// presets F / B / In: the side's copper and silkscreen; all has every layer; each with the courtyards when Courtyards is on
 function presetLayers(p) {
   const inner = S.board.copper.filter(n => n !== 'F.Cu' && n !== 'B.Cu');
-  if (p === 'F') return ['F.Cu', 'F.Silkscreen', 'Edge.Cuts'];
-  if (p === 'B') return ['B.Cu', 'B.Silkscreen', 'Edge.Cuts'];
-  if (p === 'In') return [...inner, 'F.Silkscreen', 'Edge.Cuts'];
-  return S.board.layers.map(l => l.name);
+  if (p === 'F') return withCourts(['F.Cu', 'F.Silkscreen', 'Edge.Cuts']);
+  if (p === 'B') return withCourts(['B.Cu', 'B.Silkscreen', 'Edge.Cuts']);
+  if (p === 'In') return withCourts([...inner, 'F.Silkscreen', 'Edge.Cuts']);
+  return withCourts(S.board.layers.map(l => l.name));
 }
 
 function setPreset(p, active) {
@@ -172,23 +180,15 @@ function layerOrder() {
   return [...order, 'Edge.Cuts'];
 }
 
-// Courtyards: the courtyard of the side(s) on show (F for F and the inner layers, B for B, both for all)
-function courtyards() {
-  if (!S.court) return [];
-  if (S.layers.preset === 'all') return ['F.Courtyard', 'B.Courtyard'];
-  return [S.layers.active === 'B' ? 'B.Courtyard' : 'F.Courtyard'];
-}
-
 // an item on several copper layers: those layers only, all see-through so each shows through the others
 function setMulti(keys, active) {
-  S.layers = { preset: 'multi', active, vis: [...keys.map(cuLayer), active === 'B' ? 'B.Silkscreen' : 'F.Silkscreen', 'Edge.Cuts'] };
+  S.layers = { preset: 'multi', active, vis: withCourts([...keys.map(cuLayer), active === 'B' ? 'B.Silkscreen' : 'F.Silkscreen', 'Edge.Cuts']) };
   saveLayers();
   applyLayers();
 }
 
 function applyLayers() {
-  const order = layerOrder(), vis = new Set(S.layers.vis), a = S.layers.active;
-  const shown = new Set([...vis, ...courtyards()]);
+  const order = layerOrder(), vis = new Set(S.layers.vis), shown = vis, a = S.layers.active;
   const inner = !(a === 'F' || a === 'B'), multi = S.layers.preset === 'multi';
   for (const [name, img] of Object.entries(imgs)) {
     const z = order.indexOf(name) + 1;
@@ -208,6 +208,9 @@ function applyLayers() {
   }
   document.querySelectorAll('#presets button').forEach(b => b.classList.toggle('on', b.dataset.p === S.layers.preset));
   document.querySelectorAll('#layerBoxes input').forEach(c => { c.checked = vis.has(c.value); });
+  const courts = courtLayers(), on = courts.filter(n => vis.has(n)).length;   // Courtyards tells what is on screen
+  $('courtBox').checked = on > 0 && on === courts.length;
+  $('courtBox').indeterminate = on > 0 && on < courts.length;
   drawOverlay();
 }
 
@@ -749,7 +752,7 @@ async function applyBoard(b) {
     let saved = null;
     try { saved = JSON.parse(store.get('kireview.layers') || 'null'); } catch (_) {}
     const names = b.layers.map(l => l.name);
-    if (saved && saved.vis && copperKeys().includes(saved.active)) S.layers = { preset: saved.preset, active: saved.active, vis: saved.vis.filter(n => names.includes(n)) };
+    if (saved && saved.vis && copperKeys().includes(saved.active)) S.layers = { preset: saved.preset, active: saved.active, vis: withCourts(saved.vis.filter(n => names.includes(n))) };
     else S.layers = { preset: 'F', active: 'F', vis: presetLayers('F') };
     S.sel = null;
     S.hl = null;
@@ -854,7 +857,14 @@ function initLayout() {
   $('fillBox').checked = S.fills;
   $('fillBox').addEventListener('change', e => { S.fills = e.target.checked; store.set('kireview.fills', S.fills ? '1' : '0'); if (S.board) applyLayers(); });
   $('courtBox').checked = S.court;
-  $('courtBox').addEventListener('change', e => { S.court = e.target.checked; store.set('kireview.court', S.court ? '1' : '0'); if (S.board) applyLayers(); });
+  $('courtBox').addEventListener('change', e => {
+    S.court = e.target.checked;
+    store.set('kireview.courtyards', S.court ? '1' : '0');
+    if (!S.board) return;
+    S.layers.vis = withCourts(S.layers.vis);
+    saveLayers();
+    applyLayers();
+  });
   $('fit').addEventListener('click', toggleWhole);
   $('reload').addEventListener('click', async e => {
     const btn = e.currentTarget;
