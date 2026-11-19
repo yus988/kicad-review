@@ -252,9 +252,11 @@ class AreaTest(unittest.TestCase):
         st = os.stat(p)
         self.diff.sides['a']['info'] = {'folder': self.dir, 'stamp': [['a.kicad_sch', st.st_mtime_ns, st.st_size]]}
         self.assertFalse(self.diff.stale())
+        self.assertEqual(self.diff.stale_sides(), [])
         with open(p, 'a', encoding='utf-8') as f:
             f.write('\n')                                                # saved again
         self.assertTrue(self.diff.stale())
+        self.assertEqual(self.diff.stale_sides(), ['a'])                 # which side the page marks old
         self.diff.sides['a']['info'] = {'folder': self.dir, 'stamp': [['gone.kicad_sch', 1, 1]]}
         self.assertTrue(self.diff.stale())
         self.diff.sides['a']['info'] = {'folder': self.dir}               # a git side: a fixed version

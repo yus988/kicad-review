@@ -77,6 +77,10 @@ class ExampleTest(unittest.TestCase):
         for k in ('comp:R2', 'comp:D2', 'field:R1', 'field:C1', 'net:/LED1_A', 'net:/STATUS_A'):
             self.assertIn(k, keys)
         self.assertFalse(any(k.startswith('comp:') and k[5:] in ('R1', 'C1', 'D1', 'J1') for k in keys))
+        for k in ('a', 'b'):        # the page tells when what it shows is no longer the latest (sch.html renderHeader)
+            self.assertTrue(st['sides'][k]['ver'] and st['sides'][k]['old'].startswith('blinky_v'), st['sides'][k])
+        info = self.app.info()['sch']
+        self.assertEqual((info['old'], info['vers']), ([], {k: st['sides'][k]['ver'] for k in ('a', 'b')}))
         title = {it['key']: it['title'] for it in st['items']}
         self.assertTrue(title['comp:R2'].startswith('R2 added'), title['comp:R2'])      # the server runs in English
         jp = re.compile(r'[\u3040-\u30ff\u4e00-\u9fff\uff00-\uffef]')

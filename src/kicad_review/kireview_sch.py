@@ -397,7 +397,7 @@ def snapshot(sp):
             name = os.path.basename(os.path.normpath(folder))
         when = git(sp['repo'], 'log', '-1', '--format=%cd', '--date=format:%m/%d %H:%M', sha).strip()
         info = {'kind': 'git', 'label': '%s @ %s' % (sp['path'], ref), 'short': '%s@%s' % (name, sp['ref']),
-                'disp': t('git.at', name=name, when=when, sha=sha[:7]),
+                'disp': t('git.at', name=name, when=when, sha=sha[:7]), 'ver': key,
                 'sha': sha, 'readonly': True, 'folder': folder, 'ref': sp['ref']}
         src = os.path.join(d, 'src')
         if not os.path.isfile(os.path.join(d, 'meta.json')):
@@ -435,10 +435,20 @@ def snapshot(sp):
                 continue    # sheet file outside the project folder: not copied (limit, see README)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copy2(os.path.join(base, rel), dst)
-    # stamp: the files read and their versions, to tell when they are saved again (Diff.stale)
+    # stamp: the files read and their versions, to tell when they are saved again (Diff.stale_sides); ver: the version
+    # read, for the page to tell that the server read another since (api/info sch.vers); disp names the folder as the
+    # latest, old names what was read once it is no longer the latest (the page shows it then)
+    state, name = folder_state(base), os.path.basename(base)
+    saved = time.strftime('%m/%d %H:%M', time.localtime(max(m for _, m, _ in stamp) / 1e9)) if stamp else ''
+    if state['dirty'] is False and state['last']:
+        was = t('old.clean', last=state['last'])
+    elif state['dirty'] and state['last']:
+        was = t('old.dirty', saved=saved, last=state['last'])
+    else:
+        was = t('old.saved', saved=saved)
     info = {'kind': 'folder', 'label': orig_root.replace('\\', '/'), 'readonly': False, 'open': orig_root, 'stamp': stamp,
-            'short': os.path.basename(base), 'folder': base,
-            'disp': t('folder.disp', name=os.path.basename(base), state=folder_state(base)['text'])}
+            'short': name, 'folder': base, 'ver': key, 'disp': t('folder.disp', name=name, state=state['text']),
+            'old': t('folder.old', name=name, was=was)}
     return d, os.path.join(src, os.path.basename(orig_root)), info
 
 
@@ -1314,6 +1324,7 @@ class Diff:
             single = B is None
             info = {k: {'spec': v['spec'], 'label': v['info']['label'], 'kind': v['info']['kind'],
                         'short': v['info']['short'], 'disp': v['info'].get('disp', v['info']['short']),
+                        'old': v['info'].get('old'), 'ver': v['info'].get('ver'),
                         'folder': v['info']['folder'].replace('\\', '/'),
                         'ref': v['info'].get('ref', ''), 'readonly': v['info']['readonly']} for k, v in sides.items()}
             # the review file also holds this pair's settings (diff on / off, manual sheet pairs): read it first
@@ -1362,19 +1373,25 @@ class Diff:
         self.set_option('show_diff', bool(on))
         return self.load()
 
-    def stale(self):
-        """A folder side whose schematic files changed (or went) since it was loaded, saved in KiCad: the page offers
-        to load it again. A git side is a fixed version."""
-        for s in list(self.sides.values()):
-            info = s['info']
+    def stale_sides(self):
+        """The folder sides ('a', 'b') whose schematic files changed (or went) since they were loaded, saved in KiCad:
+        the page marks them old and offers to load them again. A git side is a fixed version."""
+        sides, old = self.sides, []
+        for k in sorted(sides):
+            info = sides[k]['info']
             for rel, mtime, size in info.get('stamp') or []:
                 try:
                     st = os.stat(os.path.join(info['folder'], rel))
                 except OSError:
-                    return True
+                    old.append(k)
+                    break
                 if st.st_mtime_ns != mtime or st.st_size != size:
-                    return True
-        return False
+                    old.append(k)
+                    break
+        return old
+
+    def stale(self):
+        return bool(self.stale_sides())
 
     def area_contents(self, side, sheet, box):
         """What is in a box (sheet mm) of a sheet of one side: the parts whose box meets it, in reference order, and the

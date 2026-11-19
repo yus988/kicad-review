@@ -13,6 +13,7 @@
 }
 header .grow { flex: 1; }
 #cmpBtn { flex: 0 1 auto; min-width: 6em; max-width: 40em; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+#cmpBtn.old { color: var(--sev-should); border-color: var(--sev-should); }   /* what is shown was saved again since */
 body.single .bside { display: none !important; }
 #cmp { position: fixed; z-index: 40; background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
   box-shadow: 0 4px 16px rgba(0,0,0,.18); padding: 10px; width: 560px; max-width: calc(100vw - 16px); }
@@ -344,13 +345,19 @@ const keyEntry = key => { const i = S.items.findIndex(it => it.key === key); ret
 // the review's name: the tab says "<name> review", the datasheet tab "<name> datasheet"
 function reviewName() { return !S ? '' : S.single ? S.sides.a.short : S.sides.a.short + ' → ' + S.sides.b.short; }
 Review.setReviewName(reviewName);
+let oldSides = [];   // the folder sides saved again in KiCad since they were loaded (api/info sch.old)
 function renderHeader() {
   document.body.classList.toggle('single', !S || S.single);
-  // the header names A → B in one button that opens the compare panel; the full paths in its tooltip
+  // the header names A → B in one button that opens the compare panel; the full paths in its tooltip. A side saved
+  // again since it was loaded is no longer the latest: the header says it is an old version (the server's text)
   const b = $('cmpBtn'), sd = S && S.sides;
-  b.textContent = !S ? t('sch.cmp.choose') : S.single ? (sd.a.disp || sd.a.short) + t('sch.one') : sd.a.short + ' → ' + sd.b.short;
-  b.title = !S ? t('sch.cmp.choose.title') : ['a', 'b'].filter(k => sd[k]).map(k => k.toUpperCase() + ': ' + (sd[k].disp || sd[k].short) + '\n   ' +
-    sd[k].label + (sd[k].readonly ? t('sch.readonly.git') : '')).join('\n') + '\n' + t('sch.cmp.click');
+  const old = k => oldSides.includes(k) && sd[k] && (sd[k].old || sd[k].short + t('sch.old.mark'));
+  const short = k => sd[k].short + (old(k) ? t('sch.old.mark') : '');
+  b.textContent = !S ? t('sch.cmp.choose') : S.single ? (old('a') || sd.a.disp || sd.a.short) + t('sch.one') : short('a') + ' → ' + short('b');
+  b.title = !S ? t('sch.cmp.choose.title') : ['a', 'b'].filter(k => sd[k]).map(k => k.toUpperCase() + ': ' + (old(k) || sd[k].disp || sd[k].short) + '\n   ' +
+    sd[k].label + (sd[k].readonly ? t('sch.readonly.git') : '')).join('\n') + (S && oldSides.length ? '\n' + t('sch.old.title') : '') +
+    '\n' + t('sch.cmp.click');
+  b.classList.toggle('old', !!S && oldSides.some(k => sd[k]));
   document.title = !S ? t('sch.title') : t('sch.doctitle', { name: reviewName() });
   document.body.classList.toggle('nodiff', !!S && !S.single && !S.show_diff);
   $('diffChk').checked = !!S && !S.single && !!S.show_diff;
@@ -1245,6 +1252,7 @@ function gotoRef(ref) {
 function takeRef() { const r = Review.takeRef(); if (r) gotoRef(r); }
 
 function load(state) {
+  oldSides = [];   // just read: the latest (the next api/info says otherwise if it was saved meanwhile)
   if (state.empty) {
     S = null;
     sel = null;
@@ -1532,7 +1540,15 @@ Review.arrowKeys(() => !$('cmp').hidden || !$('pairPop').hidden, d => {
 });
 let boardOn = null, following = false;
 Review.onInfo(i => {
-  if (!$('schNew').disabled) $('schNew').classList.toggle('off', !(S && i.sch && i.sch.stale && i.sch.page === S.review.page));
+  // a side is old when it was saved again since the server read it (sch.old), or when the server read another version
+  // since this page loaded (it was started again after a code change and read the folder anew: sch.vers)
+  if (!S) oldSides = [];
+  else if (i.sch && i.sch.page === S.review.page) {
+    const vers = i.sch.vers || {}, saved = i.sch.old || [];
+    const old = ['a', 'b'].filter(k => S.sides[k] && (saved.includes(k) || (S.sides[k].ver && vers[k] && vers[k] !== S.sides[k].ver)));
+    if (old.join() !== oldSides.join()) { oldSides = old; renderHeader(); }
+  }
+  if (!$('schNew').disabled) $('schNew').classList.toggle('off', !(S && oldSides.length));
   if (!!i.board !== boardOn) { boardOn = !!i.board; renderDetail(); }   // the links to the board
   // the server holds another schematic review than this page (restarted on a renamed folder, or another tab opened
   // another one): load it, or the page would keep writing to a review the server no longer has

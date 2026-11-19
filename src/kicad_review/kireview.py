@@ -164,8 +164,9 @@ class App:
         st = self.sch.state if self.sch else None
         sch = None
         if st:
-            sd = st['sides']
-            sch = {'page': st['review']['page'], 'single': st['single'], 'stale': self.sch.stale(),
+            sd, old = st['sides'], self.sch.stale_sides()
+            sch = {'page': st['review']['page'], 'single': st['single'], 'stale': bool(old), 'old': old,
+                   'vers': {k: s.get('ver') for k, s in sd.items() if s},
                    'title': sd['a']['short'] if st['single'] else sd['a']['short'] + ' → ' + sd['b']['short']}
         board = {'page': self.board_store.page, 'stem': self.board.stem,
                  'path': self.board.path.replace('\\', '/')} if self.board else None
