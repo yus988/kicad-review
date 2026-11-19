@@ -190,12 +190,18 @@ class App:
         if path == '/api/sch/state':
             return 200, self.sch.state if self.sch else {'empty': True}
         if path.startswith('/sch/svg/'):
-            parts = path.split('/')                          # /sch/svg/<a|b>/<file>[?tone=red]
+            parts = path.split('/')                          # /sch/svg/<a|b>/<file>[?tone=red][&cell=<col>_<row>]
             p = self.sch.svg_path(parts[3], parts[4]) if self.sch and len(parts) == 5 else None
-            if not p:
+            cell = re.match(r'^(\d+)_(\d+)$', one('cell'))
+            if not p or one('cell') and not cell:
                 return 404, {'error': 'not found'}
-            with open(p, 'rb') as f:
-                body = f.read()
+            if cell:                                         # one cell of the sheet (kireview_sch.split_sheet)
+                body = kc.sheet_cell(p, int(cell.group(1)), int(cell.group(2)))
+                if body is None:
+                    return 404, {'error': 'not found'}
+            else:
+                with open(p, 'rb') as f:
+                    body = f.read()
             if one('tone') in kc.TONES:
                 body = kc.recolour(body, kc.TONES[one('tone')])
             return 200, body, 'image/svg+xml', True          # the URL carries ?v=<load time>

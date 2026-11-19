@@ -20,6 +20,7 @@ import tarfile
 import threading
 import time
 import xml.etree.ElementTree as ET
+from xml.sax.saxutils import escape as xml_escape, quoteattr
 
 from . import kicad_paths as kp
 from .i18n import t
@@ -443,6 +444,314 @@ def svg_size(path):
         head = f.read(2048).decode('utf-8', 'replace')
     m = re.search(r'viewBox="([\d.\-]+) ([\d.\-]+) ([\d.]+) ([\d.]+)"', head)
     return [float(v) for v in m.groups()] if m else [0, 0, 297, 210]
+
+
+# ---------------------------------------------------------------- sheet cells
+# A KiCad sheet SVG can hold ~100k paths in one image, and the browser draws an image whole into every raster tile that
+# shows a part of it (~80 ms a tile on a laptop GPU, so a zoomed drag stuttered). The page shows a sheet as a grid of
+# cells instead: each cell is an SVG of the elements that reach into it, drawn TILE_OVERLAP_MM past its edges so that
+# no seam shows between neighbours (KiCad sheets have no translucent fills, so the overlap looks the same).
+TILE_MM = 64                   # cell size, about
+TILE_OVERLAP_MM = 0.5          # a cell is drawn this far past its edges
+TILE_KEEP = 24                 # split sheets kept in memory (both sides of a pair of mid-size designs)
+_SVG_HEAD = ('<?xml version="1.0" standalone="no"?>\n<svg xmlns="http://www.w3.org/2000/svg" '
+             'xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="%smm" height="%smm" viewBox="%s %s %s %s">\n')
+_NUM = re.compile(r'[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?')
+_PATH_TOKEN = re.compile(r'[A-Za-z]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?')
+_PATH_ARGS = {'M': 2, 'L': 2, 'T': 2, 'H': 1, 'V': 1, 'C': 6, 'S': 4, 'Q': 4, 'A': 7, 'Z': 0}
+_NOT_MLZ = re.compile(r'[A-KN-Ya-z]')          # a path command other than M, L, Z (KiCad writes almost only these)
+_ATTR_NS = {'http://www.w3.org/1999/xlink': 'xlink:', 'http://www.w3.org/XML/1998/namespace': 'xml:'}
+_NO_GEOMETRY = ('desc', 'title', 'metadata')     # go with their parent
+_GROUPS = ('g', 'a', 'switch')
+_IDENTITY = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+_cells = {}                    # svg path -> ((mtime, size), cols, rows, [cell svg bytes, row by row])
+_cell_locks = {}
+_cells_lock = threading.Lock()
+
+
+def tile_grid(w, h):
+    """Columns and rows of the cells of a sheet w x h (viewBox units, mm)."""
+    return max(1, math.ceil(w / TILE_MM - 1e-6)), max(1, math.ceil(h / TILE_MM - 1e-6))
+
+
+def tile_spec(box):
+    """The cells of a sheet with the viewBox box, for the page."""
+    cols, rows = tile_grid(box[2], box[3])
+    return {'cols': cols, 'rows': rows, 'overlap': TILE_OVERLAP_MM}
+
+
+def _mul(p, q):
+    """SVG matrix p then q inside it (p x q), as (a, b, c, d, e, f)."""
+    a1, b1, c1, d1, e1, f1 = p
+    a2, b2, c2, d2, e2, f2 = q
+    return (a1 * a2 + c1 * b2, b1 * a2 + d1 * b2, a1 * c2 + c1 * d2, b1 * c2 + d1 * d2,
+            a1 * e2 + c1 * f2 + e1, b1 * e2 + d1 * f2 + f1)
+
+
+def _transform(text):
+    """The matrix of an SVG transform attribute, or None when it cannot be read."""
+    m = _IDENTITY
+    for name, args in re.findall(r'([A-Za-z]+)\s*\(([^)]*)\)', text):
+        v = [float(x) for x in _NUM.findall(args)]
+        if name == 'matrix' and len(v) == 6:
+            t = tuple(v)
+        elif name == 'translate' and v:
+            t = (1.0, 0.0, 0.0, 1.0, v[0], v[1] if len(v) > 1 else 0.0)
+        elif name == 'scale' and v:
+            t = (v[0], 0.0, 0.0, v[1] if len(v) > 1 else v[0], 0.0, 0.0)
+        elif name == 'rotate' and v:
+            a = math.radians(v[0])
+            t = (math.cos(a), math.sin(a), -math.sin(a), math.cos(a), 0.0, 0.0)
+            if len(v) == 3:
+                t = _mul(_mul((1.0, 0.0, 0.0, 1.0, v[1], v[2]), t), (1.0, 0.0, 0.0, 1.0, -v[1], -v[2]))
+        elif name in ('skewX', 'skewY') and v:
+            k = math.tan(math.radians(v[0]))
+            t = (1.0, 0.0, k, 1.0, 0.0, 0.0) if name == 'skewX' else (1.0, k, 0.0, 1.0, 0.0, 0.0)
+        else:
+            return None
+        m = _mul(m, t)
+    return m
+
+
+def path_box(d):
+    """[x0, y0, x1, y1] holding path data d (curves by their control points, arcs widened by twice their radius), or
+    None when it cannot be read."""
+    if not _NOT_MLZ.search(d):        # absolute moveto / lineto only: the numbers are the points
+        v = _NUM.findall(d)
+        if not v or len(v) % 2:
+            return None
+        xs, ys = [float(x) for x in v[0::2]], [float(y) for y in v[1::2]]
+        return [min(xs), min(ys), max(xs), max(ys)]
+    toks = _PATH_TOKEN.findall(d)
+    xs, ys = [], []
+    cx = cy = sx = sy = 0.0
+    cmd, i = None, 0
+    while i < len(toks):
+        tok = toks[i]
+        if tok.isalpha():
+            cmd = tok
+            i += 1
+            if cmd in 'Zz':
+                cx, cy = sx, sy
+            elif cmd.upper() not in _PATH_ARGS:
+                return None
+            continue
+        up = cmd.upper() if cmd else None
+        k = _PATH_ARGS.get(up)
+        if not k or i + k > len(toks):
+            return None
+        try:
+            a = [float(v) for v in toks[i:i + k]]
+        except ValueError:
+            return None
+        i += k
+        ox, oy = (cx, cy) if cmd.islower() else (0.0, 0.0)
+        if up == 'H':
+            cx = a[0] + ox
+            pts = [(cx, cy)]
+        elif up == 'V':
+            cy = a[0] + oy
+            pts = [(cx, cy)]
+        elif up == 'A':
+            ex, ey = a[5] + ox, a[6] + oy
+            r = max(abs(a[0]), abs(a[1]), math.hypot(ex - cx, ey - cy) / 2)
+            pts = [(cx - 2 * r, cy - 2 * r), (cx + 2 * r, cy + 2 * r), (ex, ey)]   # the arc is within 2r of its start
+            cx, cy = ex, ey
+        else:
+            pts = [(a[j] + ox, a[j + 1] + oy) for j in range(0, k, 2)]
+            cx, cy = pts[-1]
+        if up == 'M':
+            sx, sy = cx, cy
+            cmd = 'l' if cmd == 'm' else 'L'          # more pairs after a moveto are linetos
+        xs += [p[0] for p in pts]
+        ys += [p[1] for p in pts]
+    return [min(xs), min(ys), max(xs), max(ys)] if xs else None
+
+
+def _element_box(e, tag):
+    """[x0, y0, x1, y1] of a drawing element in its own coordinates, or None when not known (drawn in every cell)."""
+    def f(name, default=0.0):
+        v = _NUM.findall(e.get(name, ''))
+        return float(v[0]) if v else default
+    try:
+        if tag == 'path':
+            return path_box(e.get('d', ''))
+        if tag == 'circle':
+            r = f('r')
+            return [f('cx') - r, f('cy') - r, f('cx') + r, f('cy') + r]
+        if tag == 'ellipse':
+            return [f('cx') - f('rx'), f('cy') - f('ry'), f('cx') + f('rx'), f('cy') + f('ry')]
+        if tag in ('rect', 'image'):
+            return [f('x'), f('y'), f('x') + f('width'), f('y') + f('height')]
+        if tag == 'line':
+            return [min(f('x1'), f('x2')), min(f('y1'), f('y2')), max(f('x1'), f('x2')), max(f('y1'), f('y2'))]
+        if tag in ('polyline', 'polygon'):
+            v = [float(x) for x in _NUM.findall(e.get('points', ''))]
+            return [min(v[0::2]), min(v[1::2]), max(v[0::2]), max(v[1::2])] if len(v) >= 2 else None
+        if tag == 'text':
+            fs = f('font-size', 2.0)
+            w = f('textLength', 0.0) or fs * len(''.join(e.itertext()))
+            x, y = f('x'), f('y')
+            x0 = {'middle': x - w / 2, 'end': x - w}.get(e.get('text-anchor'), x)
+            return [x0 - fs, y - 1.5 * fs, x0 + w + fs, y + fs]
+    except (ValueError, IndexError):
+        return None
+    return None
+
+
+_LOCAL = {}
+
+
+def _local(tag):
+    n = _LOCAL.get(tag)
+    if n is None:
+        n = _LOCAL[tag] = tag.rsplit('}', 1)[-1] if isinstance(tag, str) else ''
+    return n
+
+
+_ATTR_SPECIAL = re.compile(r'[&<>"\n\r\t]')
+
+
+def _attr(v):
+    """An attribute value with its quotes (most values need no escaping)."""
+    return quoteattr(v) if _ATTR_SPECIAL.search(v) else '"' + v + '"'
+
+
+def _open_tag(e, empty):
+    attrs = []
+    for k, v in e.attrib.items():
+        if k[0] == '{':
+            ns, name = k[1:].split('}', 1)
+            if ns not in _ATTR_NS:
+                continue
+            k = _ATTR_NS[ns] + name
+        attrs.append(' ' + k + '=' + _attr(v))
+    return '<' + _local(e.tag) + ''.join(attrs) + ('/>' if empty else '>')
+
+
+def _element_text(e):
+    """An element with all it holds, as SVG text."""
+    if not len(e) and not (e.text or '').strip():
+        return _open_tag(e, True)
+    return (_open_tag(e, False) + xml_escape(e.text or '') +
+            ''.join(_element_text(c) + xml_escape(c.tail or '') for c in e) + '</%s>' % _local(e.tag))
+
+
+def split_sheet(data):
+    """The cells of a sheet SVG: (cols, rows, [SVG bytes of each cell, row by row]). Every cell keeps the elements whose
+    box reaches into it (with the stroke width and the overlap), in the order of the sheet."""
+    root = ET.fromstring(data)
+    vb = [float(v) for v in _NUM.findall(root.get('viewBox', ''))]
+    if len(vb) != 4 or vb[2] <= 0 or vb[3] <= 0:
+        return 1, 1, [data]
+    vx, vy, vw, vh = vb
+    cols, rows = tile_grid(vw, vh)
+    cw, ch = vw / cols, vh / rows
+    widths = [float(v) for v in re.findall(rb'stroke-width\s*[:=]\s*"?\s*([\d.]+)', data)]
+    pad = TILE_OVERLAP_MM + (max(widths) / 2 if widths else 0.0) + 0.05
+    every = frozenset(range(cols * rows))
+
+    def cells_of(x0, y0, x1, y1):
+        c0, c1 = max(0, math.floor((x0 - pad - vx) / cw)), min(cols - 1, math.floor((x1 + pad - vx) / cw))
+        r0, r1 = max(0, math.floor((y0 - pad - vy) / ch)), min(rows - 1, math.floor((y1 + pad - vy) / ch))
+        if c0 == c1 and r0 == r1:
+            return {r0 * cols + c0}
+        return {r * cols + c for r in range(r0, r1 + 1) for c in range(c0, c1 + 1)}
+
+    cells = {}                       # element -> set of cells, None = goes with its parent
+
+    def visit(e, m):
+        tag = _local(e.tag)
+        if tag in _NO_GEOMETRY:
+            cells[e] = None
+            return set()
+        if m is not None and 'transform' in e.attrib:
+            t = _transform(e.get('transform'))
+            m = _mul(m, t) if t else None
+        if tag in _GROUPS:
+            s = set()
+            for c in e:
+                s |= visit(c, m)
+        else:
+            b = _element_box(e, tag) if m is not None else None
+            if b is None:
+                s = set(every)
+            elif m is _IDENTITY:
+                s = cells_of(*b)
+            else:
+                xs = [m[0] * x + m[2] * y + m[4] for x in (b[0], b[2]) for y in (b[1], b[3])]
+                ys = [m[1] * x + m[3] * y + m[5] for x in (b[0], b[2]) for y in (b[1], b[3])]
+                s = cells_of(min(xs), min(ys), max(xs), max(ys))
+        cells[e] = s
+        return s
+
+    for c in root:
+        visit(c, _IDENTITY)
+    out = [[] for _ in range(cols * rows)]
+
+    def emit(e, targets):
+        if _local(e.tag) not in _GROUPS:  # a drawing element goes whole (a text with its tspans)
+            s = _element_text(e)
+            for k in targets:
+                out[k].append(s)
+            return
+        s = _open_tag(e, False)
+        for k in targets:
+            out[k].append(s)
+        for c in e:
+            own = cells[c]
+            if own is None:
+                emit(c, targets)
+            elif own:
+                emit(c, sorted(own))
+        s = '</%s>\n' % _local(e.tag)
+        for k in targets:
+            out[k].append(s)
+
+    for c in root:
+        if cells[c]:                 # the sheet's own title and desc are left out
+            emit(c, sorted(cells[c]))
+    num = lambda v: ('%.4f' % v).rstrip('0').rstrip('.')
+    res = []
+    for k in range(cols * rows):
+        x, y = vx + (k % cols) * cw - TILE_OVERLAP_MM, vy + (k // cols) * ch - TILE_OVERLAP_MM
+        w, h = cw + 2 * TILE_OVERLAP_MM, ch + 2 * TILE_OVERLAP_MM
+        res.append((_SVG_HEAD % (num(w), num(h), num(x), num(y), num(w), num(h)) + ''.join(out[k]) + '</svg>\n')
+                   .encode('utf-8'))
+    return cols, rows, res
+
+
+def sheet_cell(path, col, row):
+    """One cell of the sheet SVG at path (split once per version of the file), or None."""
+    st = os.stat(path)
+    stamp = (st.st_mtime_ns, st.st_size)
+    with _cells_lock:
+        lock = _cell_locks.setdefault(path, threading.Lock())
+    with lock:                       # the page asks for all cells of a sheet at once: split it once
+        with _cells_lock:
+            hit = _cells.pop(path, None)
+            if hit and hit[0] == stamp:
+                _cells[path] = hit       # most recently used last
+        if not hit or hit[0] != stamp:
+            with open(path, 'rb') as f:
+                hit = (stamp,) + split_sheet(f.read())
+            with _cells_lock:
+                _cells[path] = hit
+                while len(_cells) > TILE_KEEP:
+                    _cells.pop(next(iter(_cells)))
+    _, cols, rows, res = hit
+    return res[row * cols + col] if 0 <= col < cols and 0 <= row < rows else None
+
+
+def warm_cells(sides):
+    """Split the sheets of the loaded sides in the background, in sheet order, so that a sheet opens without waiting."""
+    order = sorted((sh['number'], k, os.path.join(s['info']['dir'], 'svg', sh['svg']))
+                   for k, s in sides.items() for sh in s['sheets'].values())
+    for _, _, p in order:            # the same sheet of A and B one after the other
+        try:
+            sheet_cell(p, 0, 0)
+        except (OSError, ET.ParseError):
+            pass
 
 
 def recolour(svg, tone):
@@ -983,14 +1292,15 @@ class Diff:
             for n in names:
                 sa, sb = A['sheets'].get(n), B['sheets'].get(n) if B else None
                 sheets.append({'name': n,
-                               'a': dict(sa, url='/sch/svg/a/' + sa['svg']) if sa else None,
-                               'b': dict(sb, url='/sch/svg/b/' + sb['svg']) if sb else None,
+                               'a': dict(sa, url='/sch/svg/a/' + sa['svg'], tiles=tile_spec(sa['box'])) if sa else None,
+                               'b': dict(sb, url='/sch/svg/b/' + sb['svg'], tiles=tile_spec(sb['box'])) if sb else None,
                                'apath': sa.get('path', n) if sa else None, 'bpath': sb['path'] if sb else None})
             parts = {k: [{'ref': r, 'sheet': p['sheet'], 'box': p['box']} for r, p in sorted(v['pos'].items())] if v else []
                      for k, v in (('a', A), ('b', B))}
             # pin items folded into a label change keep their notes readable (and reachable for the agent)
             self.known = {it['key'] for it in items} | {k for it in items for k in it.get('folds', [])}
             self.sides = sides
+            threading.Thread(target=warm_cells, args=(sides,), daemon=True).start()
             self.state = {'loaded': time.time(), 'single': single, 'sides': info, 'sheets': sheets, 'items': items,
                           'show_diff': show_diff, 'paths': paths, 'parts': parts,
                           'review': {'slug': slug, 'page': self.store.page, 'file': self.store.path.replace('\\', '/')}}

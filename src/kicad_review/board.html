@@ -260,7 +260,25 @@ function placeImages() {
   }
 }
 
-function redraw() { placeImages(); drawOverlay(); }
+function redraw() { placeImages(); drawOverlay(); savePlace(); }
+
+// where the reader is (Review.place): the zoom and the board point at the centre, kept across a reload and the switch
+// to the schematic page and back
+const places = Review.place('kireview.board.place');
+function savePlace() {
+  if (!S.board || !S.view.s) return;
+  places.save(S.board.review.page, () => {
+    const W = view.clientWidth, H = view.clientHeight;
+    return W && H && S.view.s ? { s: S.view.s, cx: (W / 2 - S.view.tx) / S.view.s, cy: (H / 2 - S.view.ty) / S.view.s } : null;
+  });
+}
+function restorePlace(b) {
+  const p = places.read(b.review.page), W = view.clientWidth, H = view.clientHeight;
+  if (!p || !(p.s > 0) || !W || !H) return false;
+  S.view = { s: p.s, tx: W / 2 - p.cx * p.s, ty: H / 2 - p.cy * p.s };
+  redraw();
+  return true;
+}
 
 function fitBoard() {
   const b = S.board.bbox || S.board.crop, W = view.clientWidth, H = view.clientHeight;
@@ -736,7 +754,7 @@ async function applyBoard(b) {
     S.sel = null;
     S.hl = null;
     if (conn && conn.page !== b.review.page) S.items = {};   // another review: its items come with the next state
-    fitBoard();
+    if (!restorePlace(b)) fitBoard();
   }
   await loadLayerImages();
   showBoardStatus(b.status, b.error);

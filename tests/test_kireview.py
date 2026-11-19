@@ -8,10 +8,12 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
 
 SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src')
 sys.path.insert(0, SRC)     # run from a clone without installing
 from kicad_review import kireview as kr  # noqa: E402
+from kicad_review import kireview_sch as kc  # noqa: E402
 from kicad_review import kireview_store as ks  # noqa: E402
 
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -199,6 +201,96 @@ class ServerTest(unittest.TestCase):
             self.assertIn(b'<html lang="ja">', self.req('/board')[1])
         finally:
             self.app.lang = 'en'
+        self.assertEqual(self.req('/sch/svg/a/x.svg?cell=0_0')[0], 404)            # no schematic open
+
+
+# a sheet of 200 x 130 mm: cells of 4 x 3 (kc.TILE_MM 64), each 50 x 43.33 mm
+SHEET = '''<?xml version="1.0" standalone="no"?>
+ <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns:svg="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+  version="1.1" width="200mm" height="130mm" viewBox="0.0000 0.0000 200.0000 130.0000">
+<title>the sheet</title>
+<desc>made by a test</desc>
+<g style="fill:none; stroke:#840000; stroke-width:0.2; stroke-linecap:round;">
+<path id="p1" d="M10 10
+L20 10
+" />
+<path id="long" d="M10 20 L190 20" />
+<path id="edge" d="M49.8 30 L49.8 32" />
+</g>
+<g id="teal" style="fill:none; stroke:#006464; stroke-width:0.1524;">
+<g transform="rotate(-90 120 100)">
+<text id="t" x="120" y="100" textLength="4" font-size="1.7" text-anchor="start" opacity="0">A&amp;B</text>
+</g>
+<g class="stroked-text"><desc>A&amp;B</desc>
+<path id="t1" d="m118 98 l1 -2 h1 v1 c1 1 2 2 3 3" />
+</g>
+</g>
+<g style="fill:#009600; stroke:none;"><circle id="dot" cx="160" cy="86.9" r="0.5" /></g>
+<g style="fill:none; stroke:#000000; stroke-width:0.2;"><path id="arc" d="M170 120 A3 3 0 1 1 171 120" /></g>
+<g transform="translate(0 0) scale(1 1)">
+</g>
+</svg>
+'''
+
+
+class CellTest(unittest.TestCase):
+    """kireview_sch.split_sheet: a sheet SVG served as a grid of cells."""
+    @classmethod
+    def setUpClass(cls):
+        cls.cols, cls.rows, cls.cells = kc.split_sheet(SHEET.encode('utf-8'))
+        cls.trees = [ET.fromstring(c) for c in cls.cells]       # every cell is an SVG of its own
+
+    def where(self, eid):
+        return {(k % self.cols, k // self.cols) for k, t in enumerate(self.trees) if t.find(".//*[@id='%s']" % eid) is not None}
+
+    def test_grid_and_view_boxes(self):
+        self.assertEqual((self.cols, self.rows), (4, 3))
+        self.assertEqual(kc.tile_spec([0, 0, 200, 130]), {'cols': 4, 'rows': 3, 'overlap': kc.TILE_OVERLAP_MM})
+        ov = kc.TILE_OVERLAP_MM
+        vb = [float(v) for v in self.trees[1 * 4 + 2].get('viewBox').split()]   # column 2, row 1
+        for got, want in zip(vb, [100 - ov, 130 / 3 - ov, 50 + 2 * ov, 130 / 3 + 2 * ov]):
+            self.assertAlmostEqual(got, want, places=3)
+
+    def test_elements_in_the_cells_they_reach(self):
+        self.assertEqual(self.where('p1'), {(0, 0)})
+        self.assertEqual(self.where('long'), {(0, 0), (1, 0), (2, 0), (3, 0)})
+        self.assertEqual(self.where('edge'), {(0, 0), (1, 0)})            # 0.2 mm from the edge: in the overlap
+        self.assertEqual(self.where('dot'), {(3, 1), (3, 2)})             # on the row edge at 86.67 mm
+        self.assertEqual(self.where('t'), {(2, 2)})                       # the rotated text: its box turned
+        self.assertEqual(self.where('t1'), {(2, 2)})                      # relative commands and a curve
+        self.assertIn((3, 2), self.where('arc'))
+
+    def test_groups_and_text_kept(self):
+        t = self.trees[2 * 4 + 2]
+        self.assertIsNone(t.find('{http://www.w3.org/2000/svg}title'))  # the sheet's own title is left out
+        g = t.find(".//*[@class='stroked-text']")
+        self.assertEqual(g.find('{http://www.w3.org/2000/svg}desc').text, 'A&B')   # desc goes with its group
+        self.assertEqual(t.find(".//*[@id='t']").text, 'A&B')
+        self.assertIn(g, list(t.find(".//*[@id='teal']")))                # inside its style group
+        self.assertIn('stroke:#006464', t.find(".//*[@id='teal']").get('style'))
+        self.assertFalse(len(self.trees[1 * 4 + 0]))                      # nothing reaches column 0, row 1
+
+    def test_path_box(self):
+        self.assertEqual(kc.path_box('M10 10\nL20 5\n'), [10, 5, 20, 10])
+        self.assertEqual(kc.path_box('m1 1 l2 0 v3 h-5 z'), [-2, 1, 3, 4])
+        self.assertEqual(kc.path_box('M0 0 C 5 -5 10 5 10 0'), [0, -5, 10, 5])   # control points included
+        b = kc.path_box('M10 10 A2 2 0 1 1 11 10')
+        self.assertLessEqual(b[0], 9)
+        self.assertGreaterEqual(b[3], 12)
+        self.assertIsNone(kc.path_box('M1 1 X 2 2'))
+
+    def test_sheet_cell(self):
+        d = tempfile.mkdtemp()
+        try:
+            p = os.path.join(d, 's.svg')
+            with open(p, 'w', encoding='utf-8') as f:
+                f.write(SHEET)
+            self.assertEqual(kc.sheet_cell(p, 0, 0), self.cells[0])
+            self.assertIsNone(kc.sheet_cell(p, 4, 0))
+            self.assertIsNone(kc.sheet_cell(p, 0, 3))
+        finally:
+            shutil.rmtree(d)
 
 
 if __name__ == '__main__':

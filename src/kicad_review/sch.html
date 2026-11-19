@@ -95,12 +95,16 @@ a { color: var(--sub); }
    resolution it was drawn at, so after a zoom sharpen() lays the stage out at the new scale (see layoutS) */
 .stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; isolation: isolate; background: #fff; will-change: transform; }
 .stage .layer { position: absolute; inset: 0; background: #fff; }
-.stage img, .stage canvas, .stage svg.marks { position: absolute; left: 0; top: 0; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
-.stage img.ghost, .stage canvas.ghost { opacity: .6; }             /* overlay: A in red under B */
-/* while zooming the canvas picture of a sheet stands in for its SVG image (see layoutS) */
+.stage .sheet, .stage canvas, .stage svg.marks { position: absolute; left: 0; top: 0; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
+/* a sheet is an SVG of cell images in sheet mm (kireview_sch.split_sheet): the browser draws only the cells a raster
+   tile shows, each at its exact place (an <img> per cell would be moved to whole pixels, a little differently each) */
+.stage svg.sheet { pointer-events: none; }
+.stage svg.sheet image { clip-path: inset(var(--cell-clip, 0px)); }   /* overlap shown a pixel wide (stageSize) */
+.stage .sheet.ghost, .stage canvas.ghost { opacity: .6; }         /* overlay: A in red under B (the cells as one) */
+/* while zooming the canvas picture of a sheet stands in for its cells (see layoutS) */
 .stage canvas { visibility: hidden; }
 #views.zooming .stage canvas[data-ready] { visibility: visible; }
-#views.zooming .stage canvas[data-ready] + img { visibility: hidden; }
+#views.zooming .stage canvas[data-ready] + .sheet { visibility: hidden; }
 svg.marks { pointer-events: none; overflow: visible; }
 svg.marks rect { fill: none; vector-effect: non-scaling-stroke; }
 svg.marks rect.sub { stroke: none; fill: rgba(43,111,214,0); }
@@ -213,16 +217,17 @@ const ST_DRAW = { 'ok': '#7a7f85', 'fix': '#e07000', 'self-fix': '#e07000', 'fix
 const ST_ARROW = { 'ok': '✓', 'fix': '⚑', 'self-fix': '✎', 'fixed': '✔', 'question': Review.ST_MARK.question };
 const STATUS_PRIO = { 'fix': 5, 'self-fix': 5, 'question': 4, '': 3, 'fixed': 2, 'ok': 1 };   // merged arrows: the most urgent wins
 // Drawing the sheet works like a PDF viewer. The stage is laid out at layoutS px per sheet mm and the browser draws the
-// SVG once at that size, sharp; a pan only moves it. While a zoom goes on, a picture of the whole sheet drawn once into
-// a canvas (under each SVG image) is shown scaled instead, which costs nothing per frame; once the zoom rests for
-// SHARPEN_MS the stage is laid out at the new scale and the SVG is drawn sharp again. Scaling the drawn SVG layer
-// itself would be soft, and scaling it down after a deep zoom makes the browser draw a large area at full resolution.
+// sheet's cells once at that size, sharp; a pan only moves it. While a zoom goes on, a picture of the whole sheet drawn
+// once into a canvas (under the cells) is shown scaled instead, which costs nothing per frame; once the zoom rests for
+// SHARPEN_MS the stage is laid out at the new scale and the cells are drawn sharp again. Scaling the drawn layer itself
+// would be soft, and scaling it down after a deep zoom makes the browser draw a large area at full resolution.
 let layoutS = 4, sharpTimer = 0;
 const SHARPEN_MS = 180;
+const CELL_SEAM_PX = 0.75;      // of the overlap of the cells, the part shown (px of the laid-out stage)
 const QUICK_MAX_PX = 3072;      // the canvas picture: longest side in pixels ...
 const QUICK_MAX_PX_PER_MM = 8;  // ... and at most this many pixels per sheet mm
 const QUICK_KEEP = 4;           // canvas pictures kept for sheets shown again
-const quickCache = new Map();   // image URL -> canvas (most recently used last)
+const quickCache = new Map();   // sheet image URL -> canvas (most recently used last)
 const DETAIL_RIGHT_W = 380;
 const ARROW_PX = 40;            // arrow length on screen
 const MERGE_PX = 16;            // arrow tips closer than this are drawn as one
@@ -545,37 +550,54 @@ function applyTalk(d) {
 }
 
 // ---------------------------------------------------------------- panes
+// one sheet: an SVG of the sheet's own size in the stage, holding its cells (each drawn its overlap, mm, past its edges)
 function addImg(parent, info, w, h, cls, query) {
-  const img = document.createElement('img');
-  img.src = info.url + '?v=' + S.loaded + (query || '');
-  img.className = cls || '';
-  img.draggable = false;
-  img.style.width = info.box[2] / w * 100 + '%';   // each sheet at its own size inside the common stage
-  img.style.height = info.box[3] / h * 100 + '%';
-  const cv = quickCanvas(img, info.box[2], info.box[3]);   // right before the image: shown in its place while zooming
+  const NS = 'http://www.w3.org/2000/svg';
+  const url = info.url + '?v=' + S.loaded + (query || '');
+  const W = info.box[2], H = info.box[3];
+  const g = info.tiles || { cols: 1, rows: 1, overlap: 0, whole: true };
+  const cw = W / g.cols, ch = H / g.rows, ov = g.overlap;
+  const box = document.createElementNS(NS, 'svg');
+  box.setAttribute('class', 'sheet' + (cls ? ' ' + cls : ''));
+  box.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  box.setAttribute('preserveAspectRatio', 'none');
+  box.style.width = W / w * 100 + '%';   // each sheet at its own size inside the common stage
+  box.style.height = H / h * 100 + '%';
+  const cells = [];                  // [src, x, y, width, height] in sheet mm
+  for (let r = 0; r < g.rows; r++) {
+    for (let c = 0; c < g.cols; c++) {
+      const cell = [g.whole ? url : url + '&cell=' + c + '_' + r, c * cw - ov, r * ch - ov, cw + 2 * ov, ch + 2 * ov];
+      const im = document.createElementNS(NS, 'image');
+      im.setAttribute('href', cell[0]);
+      ['x', 'y', 'width', 'height'].forEach((k, i) => im.setAttribute(k, cell[i + 1]));
+      im.setAttribute('preserveAspectRatio', 'none');
+      box.appendChild(im);
+      cells.push(cell);
+    }
+  }
+  const cv = quickCanvas(url, cells, W, H);     // right before the cells: shown in their place while zooming
   cv.className = cls || '';
-  cv.style.width = img.style.width;
-  cv.style.height = img.style.height;
+  cv.style.width = box.style.width;
+  cv.style.height = box.style.height;
   parent.appendChild(cv);
-  parent.appendChild(img);
+  parent.appendChild(box);
 }
 
-// the whole sheet drawn once into a canvas when its image has loaded (kept for a sheet shown again)
-function quickCanvas(img, mmW, mmH) {
-  let cv = quickCache.get(img.src);
-  if (cv) { quickCache.delete(img.src); quickCache.set(img.src, cv); return cv; }
+// the whole sheet drawn once into a canvas from its cells (the browser has them already), kept for a sheet shown again
+function quickCanvas(url, cells, mmW, mmH) {
+  let cv = quickCache.get(url);
+  if (cv) { quickCache.delete(url); quickCache.set(url, cv); return cv; }
   cv = document.createElement('canvas');
   const s = Math.min(QUICK_MAX_PX / Math.max(mmW, mmH), QUICK_MAX_PX_PER_MM);
   cv.width = Math.max(1, Math.round(mmW * s));
   cv.height = Math.max(1, Math.round(mmH * s));
-  img.decode().then(() => {
-    const ctx = cv.getContext('2d');
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, cv.width, cv.height);
-    ctx.drawImage(img, 0, 0, cv.width, cv.height);
+  const imgs = cells.map(c => { const i = new Image(); i.src = c[0]; return i; });
+  Promise.all(imgs.map(i => i.decode())).then(() => {
+    const ctx = cv.getContext('2d');   // transparent where the sheet is: the overlay's B lets the red A show through
+    imgs.forEach((img, n) => ctx.drawImage(img, cells[n][1] * s, cells[n][2] * s, cells[n][3] * s, cells[n][4] * s));
     cv.dataset.ready = '1';
-  }).catch(() => {});                // not drawn: the zoom scales the SVG layer instead
-  quickCache.set(img.src, cv);
+  }).catch(() => {});                // not drawn: the zoom scales the drawn layer instead
+  quickCache.set(url, cv);
   while (quickCache.size > QUICK_KEEP) quickCache.delete(quickCache.keys().next().value);
   return cv;
 }
@@ -595,8 +617,8 @@ function makePane(label, sides, layers, missing) {
   st.className = 'stage';
   st.dataset.w = w;
   st.dataset.h = h;
-  st.style.width = w * layoutS + 'px';
-  st.style.height = h * layoutS + 'px';
+  st.dataset.ov = ((sh.a || sh.b || {}).tiles || {}).overlap || 0;
+  stageSize(st);
   for (const L of layers) {
     const info = sh[L.side];
     let parent = st;
@@ -659,6 +681,7 @@ function applyFlip() {
   const l = $('flipLbl');
   if (l) l.innerHTML = esc(t('sch.flip.showing', { tag: '\u0001' })).replace('\u0001', flipSide === 'b' ? '<span class="tag b">B</span>' : '<span class="tag a">A</span>');
   if (mode === 'flip') drawArrows();
+  savePlace();
 }
 
 function paneSides(p) {
@@ -819,6 +842,7 @@ function clearSelection() {
   renderList();
   drawArrows();
   renderDetail();
+  savePlace();
 }
 
 function applyView() {
@@ -830,6 +854,7 @@ function applyView() {
   if (k !== 1) sharpTimer = setTimeout(sharpen, SHARPEN_MS);
   drawArrows();
   paneWH = paneSize();
+  savePlace();
 }
 
 // the pane changed size (a panel resized or moved, the window resized): keep the zoom and the sheet point at the centre
@@ -844,13 +869,19 @@ function keepView() {
   paneWH = [w, h];
 }
 
-function sharpen() {               // lay the stages out at the current zoom: the SVG drawn again, sharp
+function sharpen() {               // lay the stages out at the current zoom: the cells drawn again, sharp
   layoutS = view.s;
-  document.querySelectorAll('.stage').forEach(st => {
-    st.style.width = st.dataset.w * layoutS + 'px';
-    st.style.height = st.dataset.h * layoutS + 'px';
-  });
+  document.querySelectorAll('.stage').forEach(stageSize);
   applyView();
+}
+
+// a stage at layoutS px per mm. Each cell is drawn its overlap (mm) past its edges; where two cells overlap the edges
+// of the lines would be drawn twice (a little darker), so only CELL_SEAM_PX of it is shown: enough to hide the seam
+function stageSize(st) {
+  st.style.width = st.dataset.w * layoutS + 'px';
+  st.style.height = st.dataset.h * layoutS + 'px';
+  // in the sheet SVG a px of clip-path is a sheet mm
+  st.style.setProperty('--cell-clip', Math.max(0, st.dataset.ov - CELL_SEAM_PX / layoutS) + 'px');
 }
 
 function paneSize() {
@@ -998,6 +1029,7 @@ function select(n, zoom) {
   renderDetail();
   const el = document.querySelector('#list .item.sel');
   if (el) el.scrollIntoView({ block: 'nearest' });
+  savePlace();
 }
 
 // #ref=<REF>: the entry for that part (two designs: a change marking it on B, else B's part, else A's part; one design:
@@ -1025,8 +1057,12 @@ function load(state) {
     return;
   }
   const same = S && S.review.page === state.review.page;
+  const p = same ? null : places.read(state.review.page);   // where the reader was in this review (savePlace)
   S = state;
   if (!same) R = { items: {}, groups: [] };   // another review: its notes come with the next talk state
+  if (p && sheetInfo(p.sheet)) sheet = p.sheet;
+  if (p && !S.single && ['side', 'overlay', 'flip'].includes(p.mode)) showMode(p.mode);
+  if (p && (p.flipSide === 'a' || p.flipSide === 'b')) flipSide = p.flipSide;
   if (!sheetInfo(sheet)) sheet = S.sheets[0] ? S.sheets[0].name : '/';
   sel = null;
   buildEntries();
@@ -1036,9 +1072,28 @@ function load(state) {
   renderList();
   renderPanes();
   renderDetail();
-  fit();
+  if (p && p.sheet === sheet && p.s > 0) {     // back at the same sheet, zoom and centre
+    const [w, h] = paneSize();
+    view.s = p.s;
+    view.x = w / 2 - p.cx * p.s;
+    view.y = h / 2 - p.cy * p.s;
+    applyView();
+  } else if (!same) fit();                     // the same review again (show differences, sheet pairs): the view stays
+  if (p && p.sel && EK[p.sel] !== undefined) select(EK[p.sel], false);
   if (!conn) conn = Review.connect(S.review.page, applyTalk);
   else conn.setPage(S.review.page);
+}
+
+// where the reader is (Review.place): the sheet, the zoom and the sheet point at the centre, the display, the selection
+const places = Review.place('kireview.sch.place');
+function savePlace() {
+  if (!S) return;
+  places.save(S.review.page, () => {
+    if (!S) return null;
+    const [w, h] = paneSize();
+    return { sheet, s: view.s, cx: (w / 2 - view.x) / view.s, cy: (h / 2 - view.y) / view.s, mode, flipSide,
+             sel: sel !== null && E[sel] ? E[sel].key : null };
+  });
 }
 
 // ---------------------------------------------------------------- controls
@@ -1060,11 +1115,14 @@ $('pairBtn').onclick = () => { if ($('pairPop').hidden) openPair(); else $('pair
 document.addEventListener('pointerdown', e => {
   if (!$('pairPop').hidden && !e.target.closest('#pairPop') && !e.target.closest('#pairBtn')) $('pairPop').hidden = true;
 });
+function showMode(m) {
+  mode = m;
+  document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+}
 $('modes').onclick = e => {
   const m = e.target.dataset.mode;
   if (!m || !S) return;
-  mode = m;
-  document.querySelectorAll('#modes button').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+  showMode(m);
   renderPanes();
 };
 $('fit').onclick = fit;

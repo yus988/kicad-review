@@ -214,7 +214,7 @@ talkpage の状態のファイルと同じ形（`{"page", "rev", "items": {<id>:
 - `POST /api/sch/compare` `{a, b}`: 比べる対象を変える（`b` が空なら 1 設計）。失敗したときは前の組のまま
 - `POST /api/sch/reload`、`POST /api/sch/show-diff` `{on}`、`POST /api/sch/sheet-pair` `{a, b}`、`POST /api/sch/open` `{side}`（eeschema を起動）
 - `POST /api/sch/group` `{"id": "drv-in", "title": "…", "keys": ["comp:R35", …], "rationale": "…"}`: まとめの作成・置き換え（`id` を省くと `g1`, `g2`…）、`DELETE /api/sch/group?id=drv-in`
-- `GET /api/projects?dir=`（KiCad プロジェクトの一覧。各 `{name, path, pcb}`）、`GET /api/refs?path=`（タグと直近のコミット）、`GET /api/datasheet/<a|b>/<ref>`（その回路図の部品が参照するローカルのデータシートだけ）、`GET /sch/svg/<a|b>/<ファイル>[?tone=red]`
+- `GET /api/projects?dir=`（KiCad プロジェクトの一覧。各 `{name, path, pcb}`）、`GET /api/refs?path=`（タグと直近のコミット）、`GET /api/datasheet/<a|b>/<ref>`（その回路図の部品が参照するローカルのデータシートだけ）、`GET /sch/svg/<a|b>/<ファイル>[?tone=red][&cell=<列>_<行>]`（`cell` を付けると、シートを約 64 mm 角に分けた区画の 1 つ。その範囲にかかる線だけを入れ、端を 0.5 mm 重ねて描く。ページは区画を並べて表示し、拡大した部分の描画をその区画の線だけで済ませる）
 
 ## 書き出し
 

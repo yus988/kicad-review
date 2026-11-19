@@ -297,6 +297,27 @@
     return { show };
   }
 
+  // ------------------------------------------------------------ where the reader was
+  // the place in a review (sheet, zoom, centre, ...) under <prefix>.<review page>: kept across a reload and the switch
+  // between the schematic and board pages (a tab link loads the other page again). save(page, fn) writes fn() once the
+  // view rests, and at once when the page is left.
+  function place(prefix) {
+    let pending = null, timer = 0;
+    const write = () => {
+      clearTimeout(timer);
+      if (!pending) return;
+      const [key, fn] = pending;
+      pending = null;
+      try { const p = fn(); if (p) store.set(key, JSON.stringify(p)); } catch (e) { console.error(e); }
+    };
+    addEventListener('pagehide', write);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') write(); });
+    return {
+      read(page) { try { return JSON.parse(store.get(prefix + '.' + page) || 'null'); } catch (_) { return null; } },
+      save(page, fn) { pending = [prefix + '.' + page, fn]; clearTimeout(timer); timer = setTimeout(write, 400); },
+    };
+  }
+
   // ------------------------------------------------------------ dockable panels
   // #work: #upper (#dockL, #center = the drawing, #dockR) over #dockB. The panels [data-panel] (list, detail)
   // move between the docks by their title bar; a dock without panels takes no space. Arrangement and sizes are kept
@@ -472,6 +493,6 @@
     STATUS_BTNS, BTN_LABEL, ST_NAME, ST_MARK, ST_LINE, DONE, SEVERITIES, SEV_LABEL, SEV_MEANING, OWNER_LABEL,
     OWNER_MEANING, stClass, isWaiting, isUnread,
     filters, sevChip, ownerChip, rowHtml, groupHtml, neighbor, askHtml, notesHtml, msgsHtml, threadHtml,
-    openFigure, closeFigure, figureOpen, bindFigures, footer, docks, arrowKeys,
+    openFigure, closeFigure, figureOpen, bindFigures, footer, docks, arrowKeys, place,
   };
 })();
