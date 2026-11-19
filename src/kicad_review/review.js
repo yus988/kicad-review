@@ -180,7 +180,7 @@
     return decodeURIComponent(m[1]).trim() || null;
   }
 
-  // ------------------------------------------------------------ list filters (show unread / show done)
+  // ------------------------------------------------------------ list filters (show unread / show done) and unread first
   // finished items are hidden unless show done; with show unread a finished item with an unread reply or waiting for one is
   // listed and stays listed (read or not) until a filter button is pressed, so rows do not vanish on a click
   function filters(prefix, onChange) {
@@ -188,10 +188,20 @@
       showDone: store.get(prefix + '.showDone') === '1',
       showUnread: store.get(prefix + '.showUnread') !== '0',
       stick: new Set(),
+      held: null,
       keep(id, it, sel) {
         if (f.showDone || !DONE.has((it && it.status) || '') || id === sel) return true;
         if (f.showUnread && (f.stick.has(id) || isWaiting(it) || isUnread(it))) { f.stick.add(id); return true; }
         return false;
+      },
+      // the groups at the top of the list (TOP_GROUPS): 'unread' (a reply not read yet), 'wait' (waiting for a reply),
+      // or null. The selected row keeps its group until another row is selected, so it does not move away while read
+      top(id, it, sel) {
+        if (f.held && f.held[0] !== sel) f.held = null;
+        let g = isUnread(it) ? 'unread' : isWaiting(it) ? 'wait' : null;
+        if (!g && f.held && f.held[0] === id) g = f.held[1];
+        if (g && id === sel) f.held = [id, g];
+        return g;
       },
       paint() { $('showDone').classList.toggle('on', f.showDone); $('showUnread').classList.toggle('on', f.showUnread); },
     };
@@ -200,6 +210,13 @@
     $('showDone').addEventListener('click', () => { f.showDone = !f.showDone; store.set(prefix + '.showDone', f.showDone ? '1' : '0'); f.stick.clear(); onChange(); });
     $('showUnread').addEventListener('click', () => { f.showUnread = !f.showUnread; store.set(prefix + '.showUnread', f.showUnread ? '1' : '0'); f.stick.clear(); onChange(); });
     return f;
+  }
+
+  // the groups above the others: replies not read yet, then the questions waiting for a reply (filters().top)
+  const TOP_GROUPS = [['unread', 'list.unread'], ['wait', 'list.waiting']];
+  function topGroups(rows, html) {
+    return TOP_GROUPS.map(([g, label]) => rows[g] && rows[g].length ?
+      groupHtml(t(label), rows[g].length, g) + rows[g].map(html).join('') : '').join('');
   }
 
   // ------------------------------------------------------------ list rows
@@ -525,7 +542,7 @@
     $, esc, store, api, notice, init, connect, markSeen, onInfo, info: () => info, takeRef,
     STATUS_BTNS, BTN_LABEL, ST_NAME, ST_MARK, ST_LINE, DONE, SEVERITIES, SEV_LABEL, SEV_MEANING, OWNER_LABEL,
     OWNER_MEANING, stClass, isWaiting, isUnread,
-    filters, sevChip, ownerChip, rowHtml, groupHtml, neighbor, askHtml, notesHtml, msgsHtml, threadHtml,
+    filters, topGroups, sevChip, ownerChip, rowHtml, groupHtml, neighbor, askHtml, notesHtml, msgsHtml, threadHtml,
     openFigure, closeFigure, figureOpen, bindFigures, footer, docks, arrowKeys, place, openDatasheet, setReviewName,
   };
 })();

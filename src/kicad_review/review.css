@@ -74,6 +74,9 @@ body.moving, body.moving * { cursor: move !important; user-select: none; }
 .grp-h.cur { background: #222; color: #fff; }
 .grp-h small { font-weight: 400; color: var(--muted); }
 .grp-h.cur small { color: #ccc; }
+.grp-h.unread { background: var(--link); color: #fff; }
+.grp-h.unread small { color: #e3ebfb; }
+.grp-h.wait { background: #e6eefb; color: var(--link); }
 .empty { padding: 16px; color: var(--muted); }
 
 /* list rows */

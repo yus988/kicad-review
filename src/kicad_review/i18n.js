@@ -89,6 +89,8 @@ const I18N = {
     'presence.down.title': 'Cannot reach the server. What you write now is not saved',
     // list rows, detail, thread
     'row.unread': 'Unread',
+    'list.unread': 'Unread replies',
+    'list.waiting': 'Waiting for a reply',
     'row.waiting': 'Waiting',
     'fig.title': 'Click for full screen',
     'k.severity': 'Severity',
@@ -379,6 +381,8 @@ const I18N = {
     'presence.down.title': 'サーバーにつながりません。この間の書き込みは保存されません',
     // list rows, detail, thread
     'row.unread': '未読',
+    'list.unread': '未読の返信',
+    'list.waiting': '返信待ち',
     'row.waiting': '返信待ち',
     'fig.title': '押すと全画面',
     'k.severity': '重要度',

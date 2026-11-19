@@ -600,16 +600,18 @@ function renderList() {
   const fixedN = ids.filter(id => stOf(S.items[id]) === 'fixed').length;
   $('progress').innerHTML = S.board ? esc(t('progress', { left, all })) + '<span class="fixed">' + esc(t('progress.fixed', { n: fixedN })) + '</span>' : '';
   filt.paint();
-  let html = '';
+  const kept = ids.filter(id => filt.keep(id, S.items[id], S.sel));
+  const lead = {}, inLead = new Set();      // unread replies and questions waiting for one, at the top (Review.topGroups)
+  for (const id of kept) {
+    const g = filt.top(id, S.items[id], S.sel);
+    if (g) { (lead[g] = lead[g] || []).push(id); inLead.add(id); }
+  }
+  const row = id => Review.rowHtml({ id, it: Object.assign({ owner: 'tbd' }, S.items[id]), label: id, title: S.items[id].title, sel: id === S.sel });
+  let html = Review.topGroups(lead, row);
   for (const sev of [...SEVERITIES, '']) {
-    const grp = ids.filter(id => sev ? S.items[id].severity === sev : !SEVERITIES.includes(S.items[id].severity));
-    const shown = grp.filter(id => filt.keep(id, S.items[id], S.sel));
+    const shown = kept.filter(id => !inLead.has(id) && (sev ? S.items[id].severity === sev : !SEVERITIES.includes(S.items[id].severity)));
     if (!shown.length) continue;
-    html += Review.groupHtml(sev ? SEV_LABEL[sev] : t('sev.other'), shown.length);
-    for (const id of shown) {
-      const it = S.items[id];
-      html += Review.rowHtml({ id, it: Object.assign({ owner: 'tbd' }, it), label: id, title: it.title, sel: id === S.sel });
-    }
+    html += Review.groupHtml(sev ? SEV_LABEL[sev] : t('sev.other'), shown.length) + shown.map(row).join('');
   }
   list.innerHTML = html || '<div class="empty">' + esc(t(!S.board ? 'board.none.short' : all ? 'list.left.none' : 'board.items.none')) + '</div>';
   list.scrollTop = top;

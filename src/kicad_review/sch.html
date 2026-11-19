@@ -439,13 +439,16 @@ function renderList() {
   if (!E.some((e, n) => shown(n))) { box.innerHTML = '<div class="empty">' + esc(t('sch.empty.nodiff')) + '</div>'; return; }
   const selKey = sel !== null && E[sel] ? E[sel].key : null;
   const order = S.sheets.map(s => s.name);
-  const groups = {};
+  const groups = {}, lead = {};             // lead: unread replies and questions waiting for one (Review.topGroups)
   E.forEach((e, n) => {
-    if ((shown(n) && matches(e) && filt.keep(e.key, R.items[e.key], selKey)) || n === sel) (groups[e.sheet] = groups[e.sheet] || []).push(n);
+    if (!((shown(n) && matches(e) && filt.keep(e.key, R.items[e.key], selKey)) || n === sel)) return;
+    const g = filt.top(e.key, R.items[e.key], selKey);
+    if (g) (lead[g] = lead[g] || []).push(n);
+    else (groups[e.sheet] = groups[e.sheet] || []).push(n);
   });
   const names = Object.keys(groups).sort((a, b) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
-  if (!names.length) { box.innerHTML = '<div class="empty">' + esc(t(filterText ? 'sch.empty.nomatch' : 'list.left.none')) + '</div>'; return; }
-  let html = '';
+  if (!names.length && !Object.keys(lead).length) { box.innerHTML = '<div class="empty">' + esc(t(filterText ? 'sch.empty.nomatch' : 'list.left.none')) + '</div>'; return; }
+  let html = Review.topGroups(lead, n => entryRow(n));
   for (const name of names) {
     html += Review.groupHtml(t('sch.sheet', { name: sheetLabel(name) }), groups[name].length, 'click' + (name === sheet ? ' cur' : ''), ' data-sheet="' + esc(name) + '"');
     for (const n of groups[name]) html += entryRow(n);
