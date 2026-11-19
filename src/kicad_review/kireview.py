@@ -36,7 +36,7 @@ from . import kireview_store as ks
 tp = ks.tp
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = 8199
-PAGES = {'/sch': 'sch.html', '/board': 'board.html'}
+PAGES = {'/sch': 'sch.html', '/board': 'board.html', '/datasheet': 'datasheet.html'}
 STATIC = {'/i18n.js': 'text/javascript', '/review.js': 'text/javascript', '/review.css': 'text/css'}
 FIGURE_TYPES = {'.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg'}
 TALK_CMDS = ('wait', 'reply', 'ack', 'show')
@@ -209,11 +209,23 @@ class App:
             parts = path.split('/')
             p = self.sch.datasheet(parts[3], urllib.parse.unquote(parts[4])) if self.sch and len(parts) == 5 else None
             return self._file(p, kc.DATASHEET_TYPES.get(os.path.splitext(p or '')[1].lower(), 'application/octet-stream'))
+        if path == '/api/datasheet-url':
+            return self.datasheet_url(one('u').strip())
         if path == '/api/projects':
             return 200, kc.list_projects(one('dir'))
         if path == '/api/refs':
             return 200, kc.list_refs(one('path'))
         return None
+
+    def datasheet_url(self, u):
+        """The datasheet tab's frame for a datasheet given as a web link of the loaded schematic (no other link): the
+        PDF from here (kc.fetch_datasheet), else a redirect to the link itself."""
+        if not self.sch or u not in self.sch.datasheet_urls():
+            return 404, {'error': 'not a datasheet link of the loaded schematic'}
+        p = kc.fetch_datasheet(u, os.path.join(self.data, 'cache', 'datasheets'))
+        if p:
+            return self._file(p, 'application/pdf', True)
+        return 302, b'', 'text/plain', False, {'Location': u}
 
     @staticmethod
     def _file(p, ctype, cache=False):
@@ -320,8 +332,8 @@ class Handler(tp.Handler):
     API = ('/_talk/api/', '/api/')
 
     def _acts(self, path, q):
-        """Also the GETs that run git or walk folders at a path from the query."""
-        return super()._acts(path, q) or path in ('/api/refs', '/api/projects')
+        """Also the GETs that run git or walk folders at a path from the query, and the one that fetches a datasheet."""
+        return super()._acts(path, q) or path in ('/api/refs', '/api/projects', '/api/datasheet-url')
 
     def _send(self, code, body, ctype='application/json', cache=False, headers=None):
         if not isinstance(body, bytes):

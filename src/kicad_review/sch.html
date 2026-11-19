@@ -372,11 +372,11 @@ function renderProgress() {
 }
 
 function entryRow(n) {
-  const e = E[n], ds = e.ds.b || e.ds.a;
+  const e = E[n], ds = e.ds.b || e.ds.a, dsRef = ds && e.items.length ? itemRef(e.items[0]) : '';
   return Review.rowHtml({
     id: e.key, it: R.items[e.key], wrap: true, sel: sel === n, titleClass: 'k-' + e.kind, detail: e.detail,
     title: (e.group ? t('sch.group.label', { n: e.items.length + e.folded.length }) : '') + e.title,
-    extra: ds ? '<a class="ds" data-datasheet href="' + esc(ds) + '" target="_blank" rel="noopener" title="' + esc(ds) + '">' + esc(t('sch.datasheet')) + '</a>' : '',
+    extra: ds ? '<a class="ds" data-datasheet data-ref="' + esc(dsRef) + '" href="' + esc(ds) + '" target="_blank" rel="noopener" title="' + esc(ds) + '">' + esc(t('sch.datasheet')) + '</a>' : '',
   });
 }
 
@@ -410,12 +410,13 @@ function dsLinks(ds) {
   else if (ds.b || ds.a) out.push([t('sch.datasheet'), ds.b || ds.a]);
   return out;
 }
-function linkRow(ds) {
+function linkRow(ds, ref) {
   const p = document.createElement('div'); p.className = 'dslinks';
   for (const [label, url] of dsLinks(ds)) {
     const a = document.createElement('a');
     a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = label; a.title = url;
     a.dataset.datasheet = '';        // opened in the datasheet tab (review.js)
+    a.dataset.ref = ref || '';
     p.appendChild(a);
   }
   return p;
@@ -471,7 +472,7 @@ function renderDetail() {
       b.onmouseenter = () => { hoverItem = i; drawArrows(); };
       b.onmouseleave = () => { hoverItem = null; drawArrows(); };
       list.appendChild(b);
-      if (dsLinks(it.ds).length) list.appendChild(linkRow(it.ds));
+      if (dsLinks(it.ds).length) list.appendChild(linkRow(it.ds, (it.refs || [])[0]));
     }
     for (const f of e.folded) {
       const b = document.createElement('button');
@@ -485,7 +486,7 @@ function renderDetail() {
   } else {
     const it = S.items[e.items[0]];
     if (it.detail) { const pre = document.createElement('pre'); pre.textContent = it.detail; box.appendChild(pre); }
-    if (dsLinks(it.ds).length) box.appendChild(linkRow(it.ds));
+    if (dsLinks(it.ds).length) box.appendChild(linkRow(it.ds, (it.refs || [])[0]));
     if (it.members && it.members.length) {
       const h = document.createElement('h4'); h.textContent = t('sch.connected', { n: it.members.length }); box.appendChild(h);
       const list = document.createElement('div'); list.className = 'members';
@@ -1018,7 +1019,7 @@ function attachPanZoom(p) {
     if (!hit || !(e.ctrlKey || e.metaKey)) return;
     const ds = partDatasheet(hit.k, hit.ref);
     if (!ds) notice(p, t('sch.ds.none', { ref: hit.ref }), e);
-    else if (!Review.openDatasheet(ds)) notice(p, t('sch.ds.failed', { ref: hit.ref }), e);
+    else if (!Review.openDatasheet(ds, hit.ref)) notice(p, t('sch.ds.failed', { ref: hit.ref }), e);
   });
   p.addEventListener('pointermove', e => {
     if (drag) {

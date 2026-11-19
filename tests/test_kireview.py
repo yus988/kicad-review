@@ -202,6 +202,9 @@ class ServerTest(unittest.TestCase):
         finally:
             self.app.lang = 'en'
         self.assertEqual(self.req('/sch/svg/a/x.svg?cell=0_0')[0], 404)            # no schematic open
+        self.assertEqual(self.req('/api/datasheet-url?u=https%3A%2F%2Fexample.com%2Fa.pdf')[0], 404)   # links of a schematic only
+        self.assertEqual(self.req('/api/datasheet-url?u=x', headers={'Origin': None})[0], 403)      # it fetches: our pages only
+        self.assertEqual(self.req('/datasheet')[0], 200)
 
 
 # a sheet of 200 x 130 mm: cells of 4 x 3 (kc.TILE_MM 64), each 50 x 43.33 mm
@@ -291,6 +294,58 @@ class CellTest(unittest.TestCase):
             self.assertIsNone(kc.sheet_cell(p, 0, 3))
         finally:
             shutil.rmtree(d)
+
+
+class DatasheetFetchTest(unittest.TestCase):
+    """kireview_sch.fetch_datasheet: a PDF given as a web link is fetched once and kept; anything else is not."""
+    @classmethod
+    def setUpClass(cls):
+        import http.server
+
+        class Site(http.server.BaseHTTPRequestHandler):
+            hits = []
+
+            def do_GET(self):
+                Site.hits.append(self.path)
+                body, ctype = (b'%PDF-1.4\n%test\n', 'application/pdf') if self.path.endswith('.pdf') else \
+                    (b'<html>a product page</html>', 'text/html')
+                self.send_response(200)
+                self.send_header('Content-Type', ctype)
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *a):
+                pass
+        cls.site = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Site)
+        cls.hits = Site.hits
+        threading.Thread(target=cls.site.serve_forever, daemon=True).start()
+        cls.base = 'http://127.0.0.1:%d/' % cls.site.server_address[1]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.site.shutdown()
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.dir)
+
+    def test_pdf_kept(self):
+        p = kc.fetch_datasheet(self.base + 'a.pdf', self.dir)
+        with open(p, 'rb') as f:
+            self.assertTrue(f.read().startswith(b'%PDF-'))
+        n = len(self.hits)
+        self.assertEqual(kc.fetch_datasheet(self.base + 'a.pdf', self.dir), p)   # from the folder the next time
+        self.assertEqual(len(self.hits), n)
+
+    def test_not_pdf(self):
+        self.assertIsNone(kc.fetch_datasheet(self.base + 'page', self.dir))
+        n = len(self.hits)
+        self.assertIsNone(kc.fetch_datasheet(self.base + 'page', self.dir))      # not asked again for a while
+        self.assertEqual(len(self.hits), n)
+        self.assertIsNone(kc.fetch_datasheet('http://127.0.0.1:1/x.pdf', self.dir))   # nothing there
 
 
 if __name__ == '__main__':

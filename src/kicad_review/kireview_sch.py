@@ -19,6 +19,8 @@ import subprocess
 import tarfile
 import threading
 import time
+import urllib.error
+import urllib.request
 import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape as xml_escape, quoteattr
 
@@ -861,6 +863,45 @@ def datasheet_link(side, key, ref):
     return t[1] if t[0] == 'url' else '/api/datasheet/%s/%s' % (key, ref)
 
 
+# a datasheet given as a web link, for the datasheet tab: many makers' sites refuse to be shown inside another page
+# (X-Frame-Options), so a PDF is fetched by this server once and shown from here; anything else is left to the link
+DATASHEET_MAX = 64 << 20          # bytes
+DATASHEET_RETRY_S = 3600          # a link that gave no PDF is tried again after this long
+DATASHEET_TIMEOUT_S = 10          # a site that answers only browsers (bot checks) is left to the link this soon
+DATASHEET_UA = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                'Chrome/140.0 Safari/537.36')   # some sites turn away other clients
+_ds_locks = {}
+_ds_lock = threading.Lock()
+
+
+def fetch_datasheet(url, folder):
+    """The PDF at url kept under folder (fetched the first time), or None when the link gives no PDF."""
+    name = hashlib.sha1(url.encode('utf-8')).hexdigest()[:24]
+    path, miss = os.path.join(folder, name + '.pdf'), os.path.join(folder, name + '.miss')
+    with _ds_lock:
+        lock = _ds_locks.setdefault(name, threading.Lock())
+    with lock:                       # the PDF viewer may ask twice at once: fetch once
+        if os.path.isfile(path):
+            return path
+        if os.path.isfile(miss) and time.time() - os.path.getmtime(miss) < DATASHEET_RETRY_S:
+            return None
+        os.makedirs(folder, exist_ok=True)
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': DATASHEET_UA, 'Accept': 'application/pdf,*/*'})
+            with urllib.request.urlopen(req, timeout=DATASHEET_TIMEOUT_S) as r:
+                data = r.read(DATASHEET_MAX + 1)
+            if not data.lstrip()[:5] == b'%PDF-' or len(data) > DATASHEET_MAX:
+                raise ValueError('not a PDF')
+            with open(path + '.part', 'wb') as f:
+                f.write(data)
+            os.replace(path + '.part', path)
+            return path
+        except (OSError, ValueError, urllib.error.URLError) as e:
+            with open(miss, 'w', encoding='utf-8') as f:
+                f.write('%s\n%s\n' % (url, e))   # why, for whoever looks
+            return None
+
+
 # ---------------------------------------------------------------- diff
 def same_part(ca, cb, ref):
     """The reference names the same kind of part in A and B (different boards reuse references for other parts)."""
@@ -1352,6 +1393,16 @@ class Diff:
             return None
         p = os.path.join(s['info']['dir'], 'svg', name)
         return p if os.path.isfile(p) else None
+
+    def datasheet_urls(self):
+        """The web links in the Datasheet fields of the loaded sides."""
+        out = set()
+        for s in self.sides.values():
+            for c in s['net']['comps'].values():
+                v = (c['fields'].get('Datasheet') or '').strip()
+                if re.match(r'^https?://', v, re.I):
+                    out.add(v)
+        return out
 
     def datasheet(self, side, ref):
         s = self.sides.get(side)

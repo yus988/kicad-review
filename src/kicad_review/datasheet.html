@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<title>Datasheet · kicad-review</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔗</text></svg>">
+<style>
+:root { --line: #d0d4da; --text: #222; --muted: #687078; --bar: #f3f4f6; --accent: #2b6fd6; }
+html, body { margin: 0; height: 100%; }
+body { display: flex; flex-direction: column; font: 13px system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--text); background: #fff; }
+#bar { display: flex; align-items: center; gap: 10px; padding: 5px 10px; border-bottom: 1px solid var(--line); background: var(--bar); white-space: nowrap; }
+#what { font-weight: 600; }
+#url { color: var(--muted); overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+#direct { color: var(--accent); text-decoration: none; border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; background: #fff; }
+#direct:hover { border-color: var(--accent); }
+#main { flex: 1; position: relative; }
+#doc { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+#msg { position: absolute; left: 0; right: 0; top: 0; padding: 24px; color: var(--muted); }
+#msg[hidden] { display: none; }
+</style>
+</head>
+<body>
+<div id="bar"><span id="what"></span><span id="url"></span><a id="direct" target="_blank" rel="noopener noreferrer"></a></div>
+<div id="main"><iframe id="doc" title="datasheet"></iframe><div id="msg" hidden></div></div>
+<script src="/i18n.js"></script>
+<script>
+// The datasheet tab (review.js openDatasheet): one tab of kicad-review that the review pages open every datasheet in,
+// shown in a frame under a bar that names the part and links the datasheet itself. The tab stays a page of ours, so
+// the review pages find it again by its name, it carries our title and icon, and its link back to the review page is
+// cut here (a datasheet site could use it to move the review page elsewhere). Only web pages (http, https) and the
+// datasheet files the server serves (/api/datasheet/...) are shown. A web link goes through /api/datasheet-url: the
+// server shows a PDF from here (many makers' sites refuse to be shown in a frame), anything else from the link itself;
+// a site that still refuses is opened with the bar's link.
+'use strict';
+try { window.opener = null; } catch (_) {}
+const q = new URLSearchParams(location.search), u = q.get('u') || '', ref = q.get('r') || '';
+let to = null;
+try { to = new URL(u, location.href); } catch (_) {}
+const ok = to && ((to.protocol === 'http:' || to.protocol === 'https:') && to.origin !== location.origin ||
+                  to.origin === location.origin && to.pathname.startsWith('/api/datasheet/'));
+document.title = t(ref ? 'ds.title.ref' : 'ds.title', { ref });
+document.getElementById('what').textContent = '🔗 ' + t(ref ? 'ds.what.ref' : 'ds.what', { ref });
+const doc = document.getElementById('doc'), msg = document.getElementById('msg');
+if (ok) {
+  document.getElementById('url').textContent = to.href;
+  document.getElementById('url').title = to.href;
+  const a = document.getElementById('direct');
+  a.href = to.href;
+  a.textContent = t('ds.direct');
+  a.title = t('ds.direct.title');
+  msg.textContent = t('ds.loading');
+  msg.hidden = false;
+  doc.addEventListener('load', () => { msg.hidden = true; });
+  doc.src = to.origin === location.origin ? to.href : '/api/datasheet-url?u=' + encodeURIComponent(u.trim());
+} else {
+  doc.remove();
+  document.getElementById('direct').remove();
+  msg.textContent = t('ds.bad', { u });
+  msg.hidden = false;
+}
+</script>
+</body>
+</html>
