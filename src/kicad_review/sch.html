@@ -376,7 +376,7 @@ function entryRow(n) {
   return Review.rowHtml({
     id: e.key, it: R.items[e.key], wrap: true, sel: sel === n, titleClass: 'k-' + e.kind, detail: e.detail,
     title: (e.group ? t('sch.group.label', { n: e.items.length + e.folded.length }) : '') + e.title,
-    extra: ds ? '<a class="ds" href="' + esc(ds) + '" target="_blank" rel="noopener" title="' + esc(ds) + '">' + esc(t('sch.datasheet')) + '</a>' : '',
+    extra: ds ? '<a class="ds" data-datasheet href="' + esc(ds) + '" target="_blank" rel="noopener" title="' + esc(ds) + '">' + esc(t('sch.datasheet')) + '</a>' : '',
   });
 }
 
@@ -412,7 +412,12 @@ function dsLinks(ds) {
 }
 function linkRow(ds) {
   const p = document.createElement('div'); p.className = 'dslinks';
-  for (const [label, url] of dsLinks(ds)) { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = label; a.title = url; p.appendChild(a); }
+  for (const [label, url] of dsLinks(ds)) {
+    const a = document.createElement('a');
+    a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = label; a.title = url;
+    a.dataset.datasheet = '';        // opened in the datasheet tab (review.js)
+    p.appendChild(a);
+  }
   return p;
 }
 

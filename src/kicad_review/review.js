@@ -113,6 +113,31 @@
     api('/_talk/api/seen', { page, id }).then(onItem, () => {}).finally(() => seenBusy.delete(page + '\n' + id));
   }
 
+  // ------------------------------------------------------------ the datasheet tab
+  // A datasheet link (a[data-datasheet]) opens in one tab of its own, used again for the next datasheet, instead of a
+  // new tab each time. Only a plain click: with Ctrl / Shift / the middle button the browser opens a tab as usual, and
+  // a blocked pop-up falls back to the link's own target. Only web pages (http, https) and the datasheet files the
+  // server serves (/api/datasheet/...) open there. The tab keeps its link to this page (window.opener): the browser
+  // finds a named tab again only while that link is there (cut, every datasheet of another site opened a new tab).
+  const DATASHEET_TAB = 'kireview-datasheet';
+  function openDatasheet(href) {
+    let to = null;
+    try { to = new URL(href, location.href); } catch (_) { return false; }
+    const ok = (to.protocol === 'http:' || to.protocol === 'https:') && to.origin !== location.origin ||
+      to.origin === location.origin && to.pathname.startsWith('/api/datasheet/');
+    if (!ok) return false;
+    let w = null;
+    try { w = window.open(to.href, DATASHEET_TAB); } catch (_) {}
+    if (!w) return false;
+    try { w.focus(); } catch (_) {}
+    return true;
+  }
+  document.addEventListener('click', e => {
+    const a = e.target.closest && e.target.closest('a[data-datasheet]');
+    if (!a || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    if (openDatasheet(a.href)) e.preventDefault();
+  });
+
   // ------------------------------------------------------------ header: tabs, presence, newer page
   let info = null, pageStamp;
   const infoListeners = [];
