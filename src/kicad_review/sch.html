@@ -222,7 +222,7 @@ const STATUS_PRIO = { 'fix': 5, 'self-fix': 5, 'question': 4, '': 3, 'fixed': 2,
 // SHARPEN_MS the stage is laid out at the new scale and the cells are drawn sharp again. Scaling the drawn layer itself
 // would be soft, and scaling it down after a deep zoom makes the browser draw a large area at full resolution.
 let layoutS = 4, sharpTimer = 0;
-const SHARPEN_MS = 180;
+const SHARPEN_MS = 600;         // a zoom rests this long before the redraw (one wheel notch to the next can take 0.4 s)
 const CELL_SEAM_PX = 0.75;      // of the overlap of the cells, the part shown (px of the laid-out stage)
 const QUICK_MAX_PX = 3072;      // the canvas picture: longest side in pixels ...
 const QUICK_MAX_PX_PER_MM = 8;  // ... and at most this many pixels per sheet mm
@@ -862,6 +862,14 @@ function applyView() {
   savePlace();
 }
 
+// wheel and drag: the view once a frame, however many events come in it (a touchpad sends many)
+let viewQueued = false;
+function requestView() {
+  if (viewQueued) return;
+  viewQueued = true;
+  requestAnimationFrame(() => { viewQueued = false; applyView(); });
+}
+
 // the pane changed size (a panel resized or moved, the window resized): keep the zoom and the sheet point at the centre
 let paneWH = null;
 function keepView() {
@@ -990,7 +998,7 @@ function attachPanZoom(p) {
     view.x = mx - (mx - view.x) * k;
     view.y = my - (my - view.y) * k;
     view.s = ns;
-    applyView();
+    requestView();
   }, { passive: false });
   let drag = null;
   p.addEventListener('pointerdown', e => {
@@ -1016,7 +1024,7 @@ function attachPanZoom(p) {
     if (drag) {
       view.x = drag.vx + e.clientX - drag.x;
       view.y = drag.vy + e.clientY - drag.y;
-      applyView();
+      requestView();
       return;
     }
     const hit = subAt(p, e), part = partAt(p, e);
