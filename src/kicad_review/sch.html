@@ -829,6 +829,19 @@ function applyView() {
   clearTimeout(sharpTimer);
   if (k !== 1) sharpTimer = setTimeout(sharpen, SHARPEN_MS);
   drawArrows();
+  paneWH = paneSize();
+}
+
+// the pane changed size (a panel resized or moved, the window resized): keep the zoom and the sheet point at the centre
+let paneWH = null;
+function keepView() {
+  const [w, h] = paneSize();
+  if (S && paneWH && (w !== paneWH[0] || h !== paneWH[1])) {
+    view.x += (w - paneWH[0]) / 2;
+    view.y += (h - paneWH[1]) / 2;
+    applyView();
+  }
+  paneWH = [w, h];
 }
 
 function sharpen() {               // lay the stages out at the current zoom: the SVG drawn again, sharp
@@ -1242,7 +1255,7 @@ document.addEventListener('keydown', e => {
 
 // ---------------------------------------------------------------- start
 Review.init('sch');
-Review.docks('kireview.sch', fit);
+Review.docks('kireview.sch', () => {});   // the drawing keeps its zoom: keepView() follows the size
 Review.arrowKeys(() => !$('cmp').hidden || !$('pairPop').hidden, d => {
   const key = Review.neighbor(sel !== null && E[sel] ? E[sel].key : null, d);
   if (key != null && EK[key] !== undefined) select(EK[key], true);
@@ -1261,7 +1274,7 @@ Review.onInfo(i => {
 });
 document.addEventListener('visibilitychange', seen);
 addEventListener('hashchange', takeRef);
-window.addEventListener('resize', fit);
+new ResizeObserver(keepView).observe($('views'));
 api('/api/sch/state').then(st => { load(st); takeRef(); }).catch(err => status(t('load.failed', { msg: err.message })));
 </script>
 </body>
