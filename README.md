@@ -39,7 +39,7 @@ pipx install kicad-review
 ```
 kicad-review [A [B]] [<board>.kicad_pcb] [--board <board>.kicad_pcb] [--data <フォルダ>] [--port 8199]
              [--no-open] [--kicad-bin <kicad-cli のフォルダ>] [--rationale <意図.json>] [--no-diff]
-             [--lang en|ja]
+             [--lang en|ja] [--no-reload]
 ```
 
 - A・B（回路図）: プロジェクトのフォルダ（`.kicad_pro` と同名の `.kicad_sch` をルートにする）、ルートの `.kicad_sch`、または `<リポジトリ>@<ref>:<リポジトリ内のパス>`（ref はタグ・ブランチ・コミット・`HEAD~3` など）。B を省くと 1 設計のレビュー
@@ -51,6 +51,7 @@ kicad-review [A [B]] [<board>.kicad_pcb] [--board <board>.kicad_pcb] [--data <�
 - `--lang en|ja`: 画面と、サーバーが作る文（回路図の項目の題名・内容など）の言語（下の「表示の言語」）
 - 起動すると既定のブラウザで `http://127.0.0.1:8199/sch`（基板だけなら `/board`）を開く。終了は Ctrl-C
 - 起動の前に `http://127.0.0.1:8199/api/info` を見て、動いていればそのサーバーを使う（別のデータなら `--port` を変える）
+- 更新の反映: ページのファイル（HTML・JS・CSS）は要求のたびに読むので、新しくなるとページの右上に **ページ更新** が出て、押せば反映する。サーバーの Python のファイル（`kicad_review`・`talkpage`）が変わると、サーバーは自分で起動し直し、開いていた回路図（A・B）と基板を開き直す（ページで選び直したものも。ポートごとに `<data>/cache/open-<port>.json` に覚える）。新しいコードが構文の誤りで読めないときは起動し直さずに知らせ、起動に失敗したときは次にコードが変わるまで待つ。仕組みは、ポートを持たない見張りのプロセスが、サーバーを子のプロセスとして動かす形（見張りを止めるとサーバーも止まる）。`--no-reload` で見張りなしの 1 プロセスになる
 
 例:
 

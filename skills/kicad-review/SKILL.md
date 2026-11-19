@@ -22,6 +22,8 @@ kicad-review [A [B]] [BOARD.kicad_pcb] --data <folder for the review data> [--po
   another `--port`.
 - Start it in a terminal the user can see and give the user the URL (`http://127.0.0.1:8199/sch` or `/board`).
 - The tool only reads the project folders (it exports from copies in `cache/`); KiCad may stay open.
+- After the kicad-review code is updated, do not restart the server by hand: it starts again by itself when its
+  Python files change and opens what was open; the pages show "Reload page" for new page files.
 
 ## Wait and reply (always wait while the page is in use)
 

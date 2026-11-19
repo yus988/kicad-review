@@ -185,6 +185,17 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.req('/api/refs?path=' + urllib.request.quote(self.dir), headers={'Origin': None})[0], 403)
         self.assertEqual(self.req('/api/info', headers={'Origin': None})[0], 200)       # plain reads stay open
 
+    def test_open_kept_for_a_restart(self):
+        """What is open is kept per port, so the server started again after a code change opens it."""
+        self.app.save_open()
+        self.assertEqual(self.app.load_open(), {'sch': None, 'board': None})
+        self.assertTrue(self.app.open_file().endswith('open-%d.json' % self.app.port))
+
+    def test_code_files(self):
+        names = {os.path.basename(p) for p in kr.code_files()}
+        self.assertTrue({'kireview.py', 'kireview_sch.py', '__init__.py'} <= names)   # talkpage's __init__.py too
+        self.assertEqual(set(kr.code_stamp()), set(kr.code_files()))
+
     def test_routes_without_targets(self):
         self.assertEqual(self.req('/api/sch/state')[1], {'empty': True})
         self.assertEqual(self.req('/api/info')[1]['sch'], None)

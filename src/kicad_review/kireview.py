@@ -1,7 +1,7 @@
 """kicad-review: review KiCad 10 schematics and boards with a coding agent, on one local page.
 
   kicad-review [A [B]] [BOARD.kicad_pcb] [--board BOARD] [--data DIR] [--port 8199] [--no-open]
-               [--kicad-bin DIR] [--rationale FILE] [--no-diff] [--lang en|ja]
+               [--kicad-bin DIR] [--rationale FILE] [--no-diff] [--lang en|ja] [--no-reload]
   kicad-review wait | reply | ack | show ...      (talkpage's commands on this server; see README.md)
   kicad-review put --file items.json              (board items, POST /api/board/item each)
   kicad-review group --file groups.json           (schematic groups, POST /api/sch/group each)
@@ -12,13 +12,18 @@ A to B are listed. BOARD: a .kicad_pcb to review. Either can be chosen in the pa
 /board the board page. <data> (default: the current folder) holds reviews/ (the review notes), cache/ and figures/.
 --lang: the language of the pages and of the text the server makes (default: $KICAD_REVIEW_LANG, else the OS
 language: ja when it is Japanese, else en).
+The server runs under a small watcher (supervise): when its own Python files change, it starts again with the new code
+and opens the schematic and board that were open (--no-reload: one process, no watching). Page files (HTML, JS, CSS)
+are read at each request anyway: a page shows "Reload page" for them.
 The work is done in kireview_sch.py, kireview_board.py and kireview_store.py; the comment threads, the agent's wait
 and replies are talkpage's (the talkpage package, routes /_talk/api/).
 """
 import argparse
+import glob
 import json
 import os
 import re
+import subprocess
 import sys
 import threading
 import time
@@ -42,6 +47,10 @@ FIGURE_TYPES = {'.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/we
 TALK_CMDS = ('wait', 'reply', 'ack', 'show')
 NAME = re.compile(r'^[\w.@+-]+$')     # review names (board stems, schematic slugs) and figure files
 REVIEW_KEY = re.compile(r'^(sch|board):[\w.@+-]+$')   # page key of a review store
+RESTART_CODE = 3                 # the server's exit status when its code changed: the watcher starts it again
+CHILD_ENV = 'KICAD_REVIEW_CHILD'  # in the server the watcher runs: "1", "restart" after a code change
+START_S = 30                     # a server started again that fails sooner did not start with the new code
+WATCHER_ENV = 'KICAD_REVIEW_WATCHER'   # the watcher's pid, in the server it runs
 
 
 def page_stamp():
@@ -68,6 +77,7 @@ class App:
         self.board, self.board_store, self.sch = None, None, None
         self.seed = seed
         self.open_lock = threading.Lock()
+        self.restarting = False        # the code changed: serve() ends with RESTART_CODE
         kc.CACHE = os.path.join(data, 'cache', 'sch')
 
     # ------------------------------------------------------------ stores and targets
@@ -106,6 +116,7 @@ class App:
             if old:
                 old.stop()
             threading.Thread(target=b.watch, daemon=True).start()
+        self.save_open()
         return self.board_info()
 
     def open_sch(self, a, b):
@@ -113,8 +124,33 @@ class App:
             d = kc.Diff(a, b or None, self.kicad_bin, self.sch_store, self.cond)
             st = d.load()
             self.sch = d
-            return st
-        return self.sch.compare(a, b)
+        else:
+            st = self.sch.compare(a, b)
+        self.save_open()
+        return st
+
+    # ------------------------------------------------------------ what is open, for a start after a code change
+    def open_file(self):
+        return os.path.join(self.data, 'cache', 'open-%d.json' % self.port)
+
+    def save_open(self):
+        """The schematic sides and the board that are open (also those chosen in the page), per port."""
+        d = {'sch': [self.sch.specs['a'], self.sch.specs['b']] if self.sch else None,
+             'board': self.board.path if self.board else None}
+        try:
+            os.makedirs(os.path.dirname(self.open_file()), exist_ok=True)
+            with open(self.open_file(), 'w', encoding='utf-8') as f:
+                json.dump(d, f, ensure_ascii=False)
+        except OSError:
+            pass
+
+    def load_open(self):
+        try:
+            with open(self.open_file(), encoding='utf-8') as f:
+                d = json.load(f)
+            return d if isinstance(d, dict) else {}
+        except (OSError, ValueError):
+            return {}
 
     def board_info(self):
         if not self.board:
@@ -454,38 +490,167 @@ def serve(args):
     if args.rationale:
         with open(args.rationale, encoding='utf-8') as f:
             seed = json.load(f)
-    app = App(data, args.kicad_bin, args.port, seed, args.lang or tp.default_lang('KICAD_REVIEW_LANG'))
+    restart = os.environ.get(CHILD_ENV) == 'restart'
+    app = App(data, args.kicad_bin, args.port, None if restart else seed,
+              args.lang or tp.default_lang('KICAD_REVIEW_LANG'))
     Handler.app = app
     try:
         srv = tp.Server(('127.0.0.1', args.port), Handler)
     except OSError as e:
         raise SystemExit('kireview: cannot listen on 127.0.0.1:%d (%s). Another kireview? '
                          'http://127.0.0.1:%d/api/info tells what it shows.' % (args.port, e, args.port))
+    board = args.board or (pcbs[0] if pcbs else None)
+    if restart:                      # started again after a code change: what was open, also what the page chose
+        last = app.load_open()
+        schs = [s for s in (last.get('sch') or []) if s]
+        board = last.get('board')
     if schs:
         print('kireview: exporting the schematic ...', flush=True)
-        st = app.open_sch(schs[0], schs[1] if len(schs) > 1 else None)
-        if args.no_diff and not st['single']:
-            st = app.sch.set_show_diff(False)
-        print('kireview: schematic %d items, %d sheets, review %s' % (len(st['items']), len(st['sheets']),
-                                                                       st['review']['file']), flush=True)
-    board = args.board or (pcbs[0] if pcbs else None)
+        try:
+            st = app.open_sch(schs[0], schs[1] if len(schs) > 1 else None)
+            if args.no_diff and not st['single'] and not restart:
+                st = app.sch.set_show_diff(False)
+            print('kireview: schematic %d items, %d sheets, review %s' % (len(st['items']), len(st['sheets']),
+                                                                           st['review']['file']), flush=True)
+        except (ValueError, RuntimeError, OSError) as e:
+            if not restart:
+                raise
+            print('kireview: the schematic did not open again (%s); choose it in the page' % e, flush=True)
     if board:
         print('kireview: exporting the board ...', flush=True)
-        b = app.open_board(board)
-        print('kireview: board %d layers, %d pads, review %s' % (len(b['layers']), len(b['dump']['pads']),
-                                                                 b['review']['file']), flush=True)
+        try:
+            b = app.open_board(board)
+            print('kireview: board %d layers, %d pads, review %s' % (len(b['layers']), len(b['dump']['pads']),
+                                                                     b['review']['file']), flush=True)
+        except (ValueError, RuntimeError, OSError) as e:
+            if not restart:
+                raise
+            print('kireview: the board did not open again (%s); choose it in the page' % e, flush=True)
     url = 'http://127.0.0.1:%d/' % args.port
     page = 'board' if board and not schs else 'sch'
     print('kireview: %s%s  (Ctrl-C to stop; the agent waits with: kicad-review wait%s)'
           % (url, page, '' if args.port == PORT else ' --port %d' % args.port), flush=True)
-    if not args.no_open:
+    if not args.no_open and not restart:
         webbrowser.open(url + page)
+    if os.environ.get(CHILD_ENV):    # under the watcher: watch the code, and stop when the watcher is gone
+        threading.Thread(target=watch_code, args=(srv, app), daemon=True).start()
+        threading.Thread(target=end_with_watcher, daemon=True).start()
     try:
         srv.serve_forever(poll_interval=0.2)
     except KeyboardInterrupt:
         pass
     finally:
         srv.server_close()
+    if app.restarting:
+        sys.exit(RESTART_CODE)
+
+
+# ---------------------------------------------------------------- start again on a code change
+def code_files():
+    """The Python files of the server: kicad_review and the talkpage package it uses."""
+    out = []
+    for pkg in (HERE, os.path.dirname(os.path.abspath(tp.__file__))):
+        out += glob.glob(os.path.join(pkg, '*.py'))
+    return out
+
+
+def code_stamp():
+    out = {}
+    for p in code_files():
+        try:
+            out[p] = os.stat(p).st_mtime_ns
+        except OSError:
+            pass
+    return out
+
+
+def wait_code_change(seen):
+    """Wait until the code differs from seen (an edit of several files is let settle for a second); the new stamp."""
+    while True:
+        time.sleep(1)
+        now = code_stamp()
+        if now != seen:
+            time.sleep(1)
+            return code_stamp()
+
+
+def watch_code(srv, app):
+    """In the server: when its Python files change and all of them compile, stop with RESTART_CODE (the watcher then
+    starts the new code). A change that does not compile is reported, and the next change is waited for."""
+    seen = code_stamp()
+    while True:
+        now = wait_code_change(seen)
+        changed = sorted(os.path.basename(p) for p in set(now) | set(seen) if now.get(p) != seen.get(p))
+        seen = now
+        bad = []
+        for p in now:
+            try:
+                with open(p, encoding='utf-8') as f:
+                    compile(f.read(), p, 'exec')
+            except (SyntaxError, ValueError, OSError) as e:
+                bad.append('%s: %s' % (os.path.basename(p), e))
+        if bad:
+            print('kicad-review: not started again, the code does not compile: ' + '; '.join(bad), flush=True)
+            continue
+        print('kicad-review: %s changed, starting the server again ...' % ', '.join(changed), flush=True)
+        app.restarting = True
+        srv.shutdown()
+        return
+
+
+def end_with_watcher():
+    """In the server: when the watcher (its parent, WATCHER_ENV) is gone (stopped, killed), the server stops too. Not by
+    a read on a pipe from the watcher: on Windows a pending read blocks every new subprocess (kicad-cli, git)."""
+    try:
+        pid = int(os.environ.get(WATCHER_ENV) or 0)
+    except ValueError:
+        return
+    if not pid:
+        return
+    if os.name == 'nt':
+        import ctypes
+        k32 = ctypes.windll.kernel32
+        h = k32.OpenProcess(0x00100000, False, pid)        # SYNCHRONIZE, opened now: a reused pid cannot fool it
+        if not h:
+            os._exit(0)
+        k32.WaitForSingleObject(h, 0xFFFFFFFF)            # until the watcher ends
+    else:
+        while os.getppid() == pid:
+            time.sleep(1)
+    os._exit(0)
+
+
+def supervise(argv):
+    """The watcher: run the server (python -m kicad_review argv) as a child and start it again when it exits with
+    RESTART_CODE. If the new code then fails within START_S, wait for the next change of the code; a server stopped
+    later (killed, crashed) ends the watcher too. Ctrl-C stops both."""
+    src = os.path.dirname(HERE)       # the folder holding kicad_review and talkpage (a clone's src, or site-packages)
+    env = dict(os.environ, **{CHILD_ENV: '1', WATCHER_ENV: str(os.getpid())})
+    env['PYTHONPATH'] = src + (os.pathsep + env['PYTHONPATH'] if env.get('PYTHONPATH') else '')
+    restarted = False
+    while True:
+        started = time.time()
+        child = subprocess.Popen([sys.executable, '-m', 'kicad_review'] + argv, env=env, stdin=subprocess.DEVNULL)
+        try:
+            code = child.wait()
+        except KeyboardInterrupt:     # the console's Ctrl-C reaches the server too
+            try:
+                child.wait(timeout=10)
+            except (subprocess.TimeoutExpired, KeyboardInterrupt):
+                child.kill()
+            return 0
+        if code == RESTART_CODE or restarted and code != 0 and time.time() - started < START_S:
+            if code != RESTART_CODE:
+                print('kicad-review: the server did not start with the new code (exit %d); '
+                      'it starts again when the code changes' % code, flush=True)
+                try:
+                    wait_code_change(code_stamp())
+                except KeyboardInterrupt:
+                    return 0
+            restarted = True
+            env[CHILD_ENV] = 'restart'
+            continue
+        return code
 
 
 def main():
@@ -517,7 +682,12 @@ def main():
     p.add_argument('--no-diff', action='store_true', help='two schematics: only put them side by side (saved in the review)')
     p.add_argument('--lang', choices=i18n.LANGS,
                    help='language of the pages (default: $KICAD_REVIEW_LANG, else ja for a Japanese OS, else en)')
-    serve(p.parse_args())
+    p.add_argument('--no-reload', action='store_true',
+                   help='one process: do not start the server again when its Python files change')
+    args = p.parse_args()
+    if args.no_reload or os.environ.get(CHILD_ENV):
+        return serve(args)
+    sys.exit(supervise(sys.argv[1:]))
 
 
 if __name__ == '__main__':
