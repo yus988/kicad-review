@@ -1257,7 +1257,8 @@ def _part_detail(f, pins):
 
 
 def part_items(A):
-    """Single-design mode: every part is a review item (grouped by sheet in the page)."""
+    """Single-design mode: every part is an item (the page lists it in its parts tab, and in the review once it has a
+    finding or a comment)."""
     net, items = A['net'], []
     refs, pins_of = _parts(net)
     for ref in refs:
@@ -1270,9 +1271,9 @@ def part_items(A):
     return items
 
 
-def side_parts(S, k, quiet):
+def side_parts(S, k):
     """Two-design mode: every part of side k ('a' / 'b') is a review item too, so any part in the drawing can be
-    asked about. quiet: the diff is shown, so the page lists a part only once it is selected or reviewed."""
+    asked about (the page lists it in its parts tab, and in the review once it has a finding or a comment)."""
     net, items, other = S['net'], [], 'b' if k == 'a' else 'a'
     refs, pins_of = _parts(net)
     for ref in refs:
@@ -1283,7 +1284,7 @@ def side_parts(S, k, quiet):
                       'detail': _part_detail(f, pins_of.get(ref, [])), 'refs': [ref], 'fields': [], 'mark': True,
                       'ds': {k: datasheet_link(S, k, ref), other: None},
                       k: [dict(S['pos'][ref], ref=ref)] if ref in S['pos'] else [], other: [],
-                      'side': k, 'quiet': quiet})
+                      'side': k})
     return items
 
 
@@ -1338,7 +1339,7 @@ class Diff:
             else:
                 align_sheets(A, B, dict(self.option('sheet_pairs', {})))
                 align_refs(A, B)
-                items = (diff(A, B) if show_diff else []) + side_parts(A, 'a', show_diff) + side_parts(B, 'b', show_diff)
+                items = (diff(A, B) if show_diff else []) + side_parts(A, 'a') + side_parts(B, 'b')
             names = sorted(set(A['sheets']) | set(B['sheets'] if B else {}),
                            key=lambda n: (n != '/', ((B and B['sheets'].get(n)) or A['sheets'][n])['number'], n))
             sheets = []

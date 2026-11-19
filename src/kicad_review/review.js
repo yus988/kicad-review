@@ -180,18 +180,17 @@
     return decodeURIComponent(m[1]).trim() || null;
   }
 
-  // ------------------------------------------------------------ list filters (show unread / show done) and unread first
-  // finished items are hidden unless show done; with show unread a finished item with an unread reply or waiting for one is
-  // listed and stays listed (read or not) until a filter button is pressed, so rows do not vanish on a click
+  // ------------------------------------------------------------ list filters (the remaining items / all) and unread first
+  // finished items (OK, fixed) are listed only with "all"; a finished item with an unread reply or waiting for one is
+  // listed in "remaining" too and stays listed (read or not) until the choice changes, so rows do not vanish on a click
   function filters(prefix, onChange) {
     const f = {
       showDone: store.get(prefix + '.showDone') === '1',
-      showUnread: store.get(prefix + '.showUnread') !== '0',
       stick: new Set(),
       held: null,
       keep(id, it, sel) {
         if (f.showDone || !DONE.has((it && it.status) || '') || id === sel) return true;
-        if (f.showUnread && (f.stick.has(id) || isWaiting(it) || isUnread(it))) { f.stick.add(id); return true; }
+        if (f.stick.has(id) || isWaiting(it) || isUnread(it)) { f.stick.add(id); return true; }
         return false;
       },
       // the groups at the top of the list (TOP_GROUPS): 'unread' (a reply not read yet), 'wait' (waiting for a reply),
@@ -203,12 +202,26 @@
         if (g && id === sel) f.held = [id, g];
         return g;
       },
-      paint() { $('showDone').classList.toggle('on', f.showDone); $('showUnread').classList.toggle('on', f.showUnread); },
+      // left: the items not finished, all: every item (the counts on the two buttons)
+      paint(left, all) {
+        $('showLeft').classList.toggle('on', !f.showDone);
+        $('showAll').classList.toggle('on', f.showDone);
+        $('showLeft').textContent = t('filter.left', { n: left });
+        $('showAll').textContent = t('filter.all', { n: all });
+      },
+      reset() { f.stick.clear(); },
     };
-    $('showDone').title = t('filter.done.title');
-    $('showUnread').title = t('filter.unread.title');
-    $('showDone').addEventListener('click', () => { f.showDone = !f.showDone; store.set(prefix + '.showDone', f.showDone ? '1' : '0'); f.stick.clear(); onChange(); });
-    $('showUnread').addEventListener('click', () => { f.showUnread = !f.showUnread; store.set(prefix + '.showUnread', f.showUnread ? '1' : '0'); f.stick.clear(); onChange(); });
+    const choose = done => {
+      if (f.showDone === done) return;
+      f.showDone = done;
+      store.set(prefix + '.showDone', done ? '1' : '0');
+      f.stick.clear();
+      onChange();
+    };
+    $('showLeft').title = t('filter.left.title');
+    $('showAll').title = t('filter.all.title');
+    $('showLeft').addEventListener('click', () => choose(false));
+    $('showAll').addEventListener('click', () => choose(true));
     return f;
   }
 

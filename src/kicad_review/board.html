@@ -87,7 +87,7 @@ header .file { color: var(--muted); font-size: 12px; overflow: hidden; text-over
 </div>
 <div class="dsplit" data-dock="B"></div><div id="dockB" class="dock"></div>
 <section class="panelbox" data-panel="list"><div class="ptitle"><span class="grip">⠿</span><span data-i18n="panel.list">List</span></div>
-  <div class="list-h"><span id="progress"></span><span class="grow"></span><button id="showUnread" data-i18n="filter.unread">Show unread</button><button id="showDone" data-i18n="filter.done">Show done</button></div>
+  <div class="list-h"><span class="seg"><button id="showLeft"></button><button id="showAll"></button></span><span id="progress"></span></div>
   <div id="list"></div>
 </section>
 <section class="panelbox" data-panel="detail"><div class="ptitle"><span class="grip">⠿</span><span data-i18n="panel.detail">Details</span></div>
@@ -598,8 +598,8 @@ function renderList() {
   const ids = Object.keys(S.items).sort(byId);
   const all = ids.length, left = ids.filter(id => !DONE.has(stOf(S.items[id]))).length;
   const fixedN = ids.filter(id => stOf(S.items[id]) === 'fixed').length;
-  $('progress').innerHTML = S.board ? esc(t('progress', { left, all })) + '<span class="fixed">' + esc(t('progress.fixed', { n: fixedN })) + '</span>' : '';
-  filt.paint();
+  $('progress').textContent = S.board && fixedN ? t('progress.fixed', { n: fixedN }) : '';
+  filt.paint(left, all);
   const kept = ids.filter(id => filt.keep(id, S.items[id], S.sel));
   const lead = {}, inLead = new Set();      // unread replies and questions waiting for one, at the top (Review.topGroups)
   for (const id of kept) {

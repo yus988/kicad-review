@@ -36,10 +36,13 @@ body.single .bside { display: none !important; }
 a { color: var(--sub); }
 
 /* panels: list, detail */
-.list-h { flex-wrap: wrap; }
-#progress { flex: 1 1 100%; width: auto; }
-#filter { order: 1; flex: 1 1 0; min-width: 0; font: inherit; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; }
-#showUnread, #showDone { order: 2; }
+#filter { flex: 1 1 0; min-width: 0; font: inherit; padding: 2px 6px; border: 1px solid var(--line); border-radius: 4px; }
+/* the list's two tabs: the review (the items to decide) and every part of the drawing */
+.ltabs { display: inline-flex; flex: 0 0 auto; align-self: stretch; margin: -6px 0; }
+.ltabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 5px 8px 3px; min-width: 7.5em;
+  font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ltabs button:hover { background: #eeeeea; }
+.ltabs button.on { color: var(--text); border-bottom-color: var(--link); background: none; }
 .item .ds { position: absolute; right: 8px; bottom: 5px; font-size: 11px; display: none; background: #fff; padding: 0 4px; border-radius: 3px; }
 .item:hover .ds { display: inline; }
 .k-comp_added, .k-sheet_added, .k-net_added { color: var(--add); }
@@ -50,7 +53,7 @@ a { color: var(--sub); }
 .k-sheet_renamed { color: var(--lab); }
 .k-group { color: var(--grp); }
 .k-area { color: var(--ask); }
-.member.folded { color: var(--muted); }
+.member.folded { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folded-note { margin: 6px 0 2px; padding: 4px 8px; border-left: 3px solid var(--line); }
 .folded-note b { color: var(--muted); font-weight: 600; }
 #detail .key { color: var(--muted); font-size: 11px; }
@@ -58,7 +61,12 @@ a { color: var(--sub); }
   border: 1px solid var(--line); border-radius: 4px; padding: 5px 7px; }
 .members { display: flex; flex-direction: column; gap: 2px; }
 .member { display: block; width: 100%; text-align: left; white-space: normal; padding: 3px 7px; }
-.member small { display: block; color: var(--muted); white-space: pre-wrap; }
+/* a group's members: one line each (the footprint and the connections in the tooltip, the datasheet link on hover) */
+.mrow { position: relative; }
+.mrow .member { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrow .dslinks { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: none; background: #fff;
+  padding: 0 4px; border-radius: 3px; font-size: 11px; }
+.mrow:hover .dslinks { display: block; }
 .member.hl { background: #ffe6f6; border-color: var(--sel); }
 .members.chips { flex-direction: row; flex-wrap: wrap; gap: 4px; }    /* the parts of an area question */
 .members.chips .member { width: auto; min-width: 3.5em; text-align: center; }
@@ -211,7 +219,8 @@ svg.arrows text.ref { font-size: 12px; stroke-width: 4px; }
 </div>
 <div class="dsplit" data-dock="B"></div><div id="dockB" class="dock"></div>
 <section class="panelbox" data-panel="list"><div class="ptitle"><span class="grip">⠿</span><span data-i18n="panel.list">List</span></div>
-  <div class="list-h"><span id="progress"></span><button id="showUnread" data-i18n="filter.unread">Show unread</button><button id="showDone" data-i18n="filter.done">Show done</button><input id="filter" data-i18n-placeholder="sch.filter" spellcheck="false"></div>
+  <div class="list-h"><span class="ltabs"><button id="tabReview"></button><button id="tabParts"></button></span><input id="filter" data-i18n-placeholder="sch.filter" spellcheck="false"></div>
+  <div class="list-h" id="leftAll"><span class="seg"><button id="showLeft"></button><button id="showAll"></button></span><span id="progress"></span></div>
   <div id="list"></div>
 </section>
 <section class="panelbox" data-panel="detail"><div class="ptitle"><span class="grip">⠿</span><span data-i18n="panel.detail">Details</span></div>
@@ -266,6 +275,8 @@ let S = null, sheet = '/', mode = 'side', flipSide = 'b', filterText = '';
 let E = [], itemEntry = [];     // list entries (items, or groups of items); item index -> entry index
 let EK = {};                    // entry key -> entry index
 let sel = null;                 // selected entry index
+let pickItem = null;            // the part picked in the drawing or in the parts list (its entry may be a group or a change)
+let listTab = store.get('kireview.sch.listTab') === 'parts' ? 'parts' : 'review';   // the list shows the review or the parts
 let hoverItem = null;           // item under the mouse (member list or arrow): emphasised in both places
 let R = { items: {}, groups: [] };   // the talk state of the review: key -> item, groups
 let conn = null;                // talk long poll
@@ -336,11 +347,10 @@ function reviewed(e) {
 // selected), 'ask' = something for the user to review (a change, a group, or a reviewed part): its arrow always stays on
 // the drawing, coloured by its status
 function markKind(e) { return e.kind === 'part' && !reviewed(e) ? 'info' : 'ask'; }
-// two designs with the diff shown: a part entry stays out of the list, the counts and the arrows until it is
-// selected (a click on the part in the drawing) or reviewed
-function quiet(e) { return e.kind === 'part' && !!S.items[e.items[0]].quiet && !reviewed(e); }
-function shown(n) { return n === sel || !quiet(E[n]); }
-function countOn(name) { return E.filter((e, n) => e.sheet === name && shown(n)).length; }
+// the review tab lists the entries to decide (changes, groups, area questions, parts with a finding or a comment); every
+// part of the drawing is in the parts tab
+const isReview = e => markKind(e) === 'ask';
+function countOn(name) { return E.filter(e => e.sheet === name && isReview(e)).length; }
 function partsOn(name) { return S.items.filter(it => it.sheet === name && it.kind === 'part').length; }
 const keyEntry = key => { const i = S.items.findIndex(it => it.key === key); return i >= 0 ? itemEntry[i] : -1; };
 
@@ -413,13 +423,18 @@ function renderNav() {
   pb.disabled = !sh.apath;
 }
 
-function renderProgress() {
-  filt.paint();
-  if (!S) { $('progress').textContent = ''; return; }
-  const list = E.filter((e, n) => shown(n));
+// the counts on the list's tabs and on remaining / all, and how many are fixed
+function renderCounts() {
+  const list = S ? E.filter(isReview) : [];
   const left = list.filter(e => !DONE.has(rv(e.key).status || '')).length;
   const fixed = list.filter(e => rv(e.key).status === 'fixed').length;
-  $('progress').innerHTML = esc(t('progress', { left, all: list.length })) + '<span class="fixed">' + esc(t('progress.fixed', { n: fixed })) + '</span>';
+  filt.paint(left, list.length);
+  $('progress').textContent = fixed ? t('progress.fixed', { n: fixed }) : '';
+  $('tabReview').textContent = t('list.tab.review', { n: list.length });
+  $('tabParts').textContent = t('list.tab.parts', { n: S ? S.items.filter(it => it.kind === 'part').length : 0 });
+  $('tabReview').classList.toggle('on', listTab === 'review');
+  $('tabParts').classList.toggle('on', listTab === 'parts');
+  $('leftAll').hidden = listTab !== 'review';
 }
 
 function entryRow(n) {
@@ -431,17 +446,42 @@ function entryRow(n) {
   });
 }
 
+// the part shown as selected in the parts tab: the one picked, else the selected entry's own part
+function selPart() { return pickItem !== null ? pickItem : sel !== null && E[sel] && E[sel].kind === 'part' ? E[sel].items[0] : null; }
+// a row of the parts tab, one line: the part's own review state; a part inside a group shows the group's status and
+// severity (the footprint and the connections are in the detail once selected)
+function partRow(i) {
+  const it = S.items[i], e = E[itemEntry[i]], own = e && e.kind === 'part';
+  const r = own ? R.items[e.key] : e && { status: rv(e.key).status, severity: rv(e.key).severity };
+  const ds = it.ds && (it.ds.b || it.ds.a);
+  return Review.rowHtml({
+    id: it.key, it: r, sel: i === selPart(), titleClass: 'k-part', title: it.title,
+    extra: ds ? '<a class="ds" data-datasheet data-ref="' + esc(itemRef(i)) + '" href="' + esc(ds) + '" target="_blank" rel="noopener" title="' + esc(ds) + '">' + esc(t('sch.datasheet')) + '</a>' : '',
+  });
+}
+const partMatches = it => !filterText || (it.title + '\n' + it.detail).toLowerCase().includes(filterText);
+// the parts tab: every part of the drawing (also those inside a group), by sheet
+function partsHtml() {
+  const order = S.sheets.map(s => s.name), groups = {};
+  S.items.forEach((it, i) => { if (it.kind === 'part' && itemEntry[i] !== undefined && partMatches(it)) (groups[it.sheet] = groups[it.sheet] || []).push(i); });
+  const names = Object.keys(groups).sort((a, b) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
+  if (!names.length) return '<div class="empty">' + esc(t(filterText ? 'sch.empty.nomatch' : 'list.parts.none')) + '</div>';
+  return names.map(name => Review.groupHtml(t('sch.sheet', { name: sheetLabel(name) }), groups[name].length, 'click' + (name === sheet ? ' cur' : ''),
+    ' data-sheet="' + esc(name) + '"') + groups[name].map(partRow).join('')).join('');
+}
+
 function renderList() {
   const box = $('list');
   const top = box.scrollTop;
-  renderProgress();
+  renderCounts();
   if (!S) { box.innerHTML = '<div class="empty">' + esc(t('sch.empty.none')) + '</div>'; return; }
-  if (!E.some((e, n) => shown(n))) { box.innerHTML = '<div class="empty">' + esc(t('sch.empty.nodiff')) + '</div>'; return; }
+  if (listTab === 'parts') { box.innerHTML = partsHtml(); box.scrollTop = top; return; }
+  if (!E.some(isReview)) { box.innerHTML = '<div class="empty">' + esc(t(S.single || !S.show_diff ? 'list.review.none' : 'sch.empty.nodiff')) + '</div>'; return; }
   const selKey = sel !== null && E[sel] ? E[sel].key : null;
   const order = S.sheets.map(s => s.name);
   const groups = {}, lead = {};             // lead: unread replies and questions waiting for one (Review.topGroups)
   E.forEach((e, n) => {
-    if (!((shown(n) && matches(e) && filt.keep(e.key, R.items[e.key], selKey)) || n === sel)) return;
+    if (!isReview(e) || !((matches(e) && filt.keep(e.key, R.items[e.key], selKey)) || n === sel)) return;
     const g = filt.top(e.key, R.items[e.key], selKey);
     if (g) (lead[g] = lead[g] || []).push(n);
     else (groups[e.sheet] = groups[e.sheet] || []).push(n);
@@ -518,22 +558,24 @@ function renderDetail() {
     const h = document.createElement('h4'); h.textContent = t('sch.members', { n: e.items.length + e.folded.length }); box.appendChild(h);
     const list = document.createElement('div'); list.className = 'members';
     for (const i of e.items) {
-      const it = S.items[i], b = document.createElement('button');
+      const it = S.items[i], row = document.createElement('div'), b = document.createElement('button');
+      row.className = 'mrow';
       b.className = 'member k-' + it.kind;
       b.textContent = it.title;
-      const sm = document.createElement('small'); sm.textContent = it.detail; b.appendChild(sm);
+      b.title = it.title + (it.detail ? '\n' + it.detail : '');
       b.dataset.i = i;
       b.onclick = () => zoomToItems([i]);
       b.onmouseenter = () => { hoverItem = i; drawArrows(); };
       b.onmouseleave = () => { hoverItem = null; drawArrows(); };
-      list.appendChild(b);
-      if (dsLinks(it.ds).length) list.appendChild(linkRow(it.ds, (it.refs || [])[0]));
+      row.appendChild(b);
+      if (dsLinks(it.ds).length) row.appendChild(linkRow(it.ds, (it.refs || [])[0]));
+      list.appendChild(row);
     }
     for (const f of e.folded) {
       const b = document.createElement('button');
       b.className = 'member folded';
-      b.textContent = f.key + t('sch.folded');
-      const sm = document.createElement('small'); sm.textContent = '→ ' + S.items[f.into].title; b.appendChild(sm);
+      b.textContent = f.key + t('sch.folded') + ' → ' + S.items[f.into].title;
+      b.title = b.textContent;
       b.onclick = () => select(itemEntry[f.into], true);
       list.appendChild(b);
     }
@@ -587,11 +629,10 @@ const foot = Review.footer({
   page: () => S && S.review.page,
   current: () => S && sel !== null && E[sel] ? [E[sel].key, R.items[E[sel].key] || null] : null,
   title: key => EK[key] !== undefined ? E[EK[key]].title : undefined,   // kept by the server for the agent's wait output
-  next: () => Review.neighbor(sel !== null && E[sel] ? E[sel].key : null, 1),
+  next: () => Review.neighbor(curRow(), 1),
   update(key, r, next) {
     R.items[key] = stripId(r);
-    if (next && EK[next] !== undefined) select(EK[next], true);
-    else { renderNav(); renderList(); drawArrows(); renderDetail(); }
+    if (!(next && rowSelect(next))) { renderNav(); renderList(); drawArrows(); renderDetail(); }
   },
 });
 
@@ -1100,7 +1141,7 @@ function attachPanZoom(p) {
     if (moved) return;
     if (e.ctrlKey || e.metaKey) { const sub = subAt(p, e); if (sub) { setSheet(sub, true); return; } }
     const hit = partAt(p, e), n = hit ? partEntry(hit.k, hit.ref) : -1;
-    if (n >= 0) select(n, false);
+    if (n >= 0) select(n, false, S.items.findIndex(it => it.key === (S.single ? 'comp:' : 'part:' + hit.k + ':') + hit.ref));
     else if (!e.ctrlKey && !e.metaKey) clearSelection();
     if (!hit || !(e.ctrlKey || e.metaKey)) return;
     const ds = partDatasheet(hit.k, hit.ref);
@@ -1235,13 +1276,15 @@ function setSheet(name, refit) {
   if (refit) fit();
 }
 
-// zoom: true when chosen from the list (move the drawing); false when chosen by its arrow (the view stays)
-function select(n, zoom) {
+// zoom: true when chosen from the list (move the drawing); false when chosen by its arrow (the view stays). part: the
+// part picked (in the drawing or the parts tab) when the entry is its group or a change: the zoom goes to that part
+function select(n, zoom, part) {
   if (n === undefined || n < 0 || !E[n]) return;
   sel = n;
+  pickItem = part === undefined || part < 0 ? null : part;
   if (zoom && E[n].kind === 'area') zoomToArea(E[n]);
-  else if (zoom) zoomToItems(E[n].items.length ? E[n].items : (E[n].folded || []).map(f => f.into));
-  if (filterText && !matches(E[n])) { filterText = ''; $('filter').value = ''; }
+  else if (zoom) zoomToItems(pickItem !== null ? [pickItem] : E[n].items.length ? E[n].items : (E[n].folded || []).map(f => f.into));
+  if (filterText && !(listTab === 'parts' && pickItem !== null ? partMatches(S.items[pickItem]) : matches(E[n]))) { filterText = ''; $('filter').value = ''; }
   renderNav();
   renderList();
   drawArrows();
@@ -1370,8 +1413,34 @@ $('list').addEventListener('click', e => {
   const h = e.target.closest('.grp-h');
   if (h) { if (sheetInfo(h.dataset.sheet)) setSheet(h.dataset.sheet, true); return; }
   const row = e.target.closest('.item');
-  if (row && EK[row.dataset.id] !== undefined) select(EK[row.dataset.id], true);
+  if (row) rowSelect(row.dataset.id);
 });
+// the row shown as selected, and selecting a row: an entry (review tab), or a part (parts tab: the part's entry, or the
+// group or change holding it)
+function curRow() { const el = document.querySelector('#list .item.sel'); return el ? el.dataset.id : null; }
+function rowSelect(id) {
+  if (listTab === 'parts') {
+    const i = S.items.findIndex(it => it.key === id);
+    if (i < 0 || itemEntry[i] === undefined) return false;
+    select(itemEntry[i], true, i);
+  } else if (EK[id] !== undefined) select(EK[id], true);
+  else return false;
+  return true;
+}
+function setListTab(v) {
+  if (listTab === v) return;
+  listTab = v;
+  store.set('kireview.sch.listTab', v);
+  filt.reset();
+  $('list').scrollTop = 0;
+  renderList();
+  const el = document.querySelector('#list .item.sel');
+  if (el) el.scrollIntoView({ block: 'nearest' });
+}
+$('tabReview').onclick = () => setListTab('review');
+$('tabParts').onclick = () => setListTab('parts');
+$('tabReview').title = t('list.tab.review.title');
+$('tabParts').title = t('list.tab.parts.title');
 document.addEventListener('keydown', e => {
   if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName) || !S) return;
   if (e.code === 'Space' && mode === 'flip' && !S.single) { e.preventDefault(); flip(); }
@@ -1550,8 +1619,8 @@ document.addEventListener('keydown', e => {
 Review.init('sch');
 Review.docks('kireview.sch', () => {});   // the drawing keeps its zoom: keepView() follows the size
 Review.arrowKeys(() => !$('cmp').hidden || !$('pairPop').hidden, d => {
-  const key = Review.neighbor(sel !== null && E[sel] ? E[sel].key : null, d);
-  if (key != null && EK[key] !== undefined) select(EK[key], true);
+  const key = Review.neighbor(curRow(), d);
+  if (key != null) rowSelect(key);
 });
 let boardOn = null, following = false;
 Review.onInfo(i => {
