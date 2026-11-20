@@ -4,8 +4,9 @@ The board is copied to <data>/cache/board/<stem>/<hash>/ and kicad-cli exports o
 without zone fills (tracks, pads and vias stay readable), and the copper with the fills a second time, drawn faintly
 under it in the page. kireview_dump.py (run with KiCad's python) lists footprints and pads. The project folder is
 only read. When the board file changes (saved in KiCad) the export runs again in the background (Board.watch).
-The 3D view's model (GLB, kicad-cli pcb export glb) is made only when the page asks for it (Board.model3d): it takes
-seconds to tens of seconds, so it is not part of the export above.
+The 3D view's model (GLB, kicad-cli pcb export glb) takes seconds to minutes, so it is not part of the export above:
+it is made in the background once the board has stayed unchanged for SETTLE_S, or when the page asks for it
+(Board.model3d).
 The review items live in kireview_store (reviews/<stem>.json); kireview.py serves the routes.
 """
 import hashlib
@@ -29,6 +30,7 @@ CROP_MARGIN = 2.0             # mm around the board outline kept in the layer SV
 NEAR_PAD_MM = 1.5             # a click this close to a pad names the pad
 WATCH_S = 2.0
 CACHE_KEEP = 2                # current export and the one before
+SETTLE_S = 30                 # the board unchanged this long (s): its 3D model is exported in the background
 EXPORT_V = 2                  # cache format: an export of another version is made again
 # the 3D model: the parts' models (STEP in place of VRML of the same name, as KiCad's 3D viewer) on the board with its
 # copper, silkscreen and soldermask
@@ -63,9 +65,16 @@ def _rmtree(path):
     shutil.rmtree(path, onerror=onerror)
 
 
-def run(cmd, cwd):
+def run(cmd, cwd, low=False):
+    """Run a KiCad program; its output (stdout, stderr). low: below normal priority (the 3D export, which may run in
+    the background while KiCad is in use)."""
+    kw = {}
+    if low and os.name == 'nt':
+        kw['creationflags'] = subprocess.BELOW_NORMAL_PRIORITY_CLASS
+    elif low:
+        kw['preexec_fn'] = lambda: os.nice(10)
     try:
-        r = subprocess.run(cmd, cwd=cwd, capture_output=True)
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, **kw)
     except FileNotFoundError:
         raise RuntimeError('%s not found: install KiCad 10, or pass --kicad-bin <folder of kicad-cli> '
                            '(or set KICAD_BIN / KICAD_PYTHON)' % cmd[0])
@@ -203,7 +212,7 @@ def export_3d(board, data, d, kicad_bin, h):
         proj = os.path.dirname(os.path.abspath(board))
         out = os.path.join(tmp, 'board.glb')
         log = run([kp.cli(kicad_bin), 'pcb', 'export', 'glb', *GLB_OPTS, '-D', 'KIPRJMOD=' + proj, '-f', '-o', out,
-                   copy], proj)
+                   copy], proj, low=True)
         if not os.path.isfile(os.path.join(d, 'meta.json')):
             return {'state': 'stale'}               # a newer export removed this version's folder meanwhile
         os.replace(out, os.path.join(d, 'board.glb'))
@@ -267,9 +276,10 @@ def nearest(dump, x, y, side):
 
 
 class Board:
-    """The board under review: the last good export, re-exported in a background thread when the file changes."""
+    """The board under review: the last good export, re-exported in a background thread when the file changes.
+    prepare_3d: also export the 3D model of a version once it has stayed SETTLE_S, so the 3D view need not wait."""
 
-    def __init__(self, path, data, kicad_bin):
+    def __init__(self, path, data, kicad_bin, prepare_3d=True):
         self.path = os.path.abspath(path)
         self.data = data
         self.kicad_bin = kicad_bin
@@ -282,6 +292,8 @@ class Board:
         self.stopped = threading.Event()
         self.x3d = {}               # export hash -> the state of its 3D model (model3d)
         self.want3d, self.busy3d = None, False   # the version to export next; one kicad-cli at a time
+        self.prepare_3d = prepare_3d
+        self.settle_at = None       # when the current version's 3D model is due (prepare_3d)
 
     def _stamp(self):
         st = os.stat(self.path)
@@ -295,6 +307,7 @@ class Board:
         with self.lock:
             self.meta, self.dump, self.stamp = meta, dump, stamp
             self.status, self.error = 'ok', ''
+            self.settle_at = time.time() + SETTLE_S if self.prepare_3d else None
 
     def dir(self, h):
         return os.path.join(self.data, 'cache', 'board', self.stem, h)
@@ -305,6 +318,7 @@ class Board:
             self.wake.clear()
             if self.stopped.is_set():
                 return
+            self._prepare_3d()
             try:
                 if not forced and self._stamp() == self.stamp:
                     continue
@@ -321,6 +335,16 @@ class Board:
                         self.stamp = self._stamp()
                     except OSError:
                         pass
+
+    def _prepare_3d(self):
+        """The board has stayed as it is for SETTLE_S since its last export: its 3D model now (model3d does nothing
+        when it is there, being made, or failed)."""
+        with self.lock:
+            due = self.settle_at is not None and time.time() >= self.settle_at
+            if due:
+                self.settle_at = None
+        if due:
+            self.model3d()
 
     def stop(self):
         """Another board was opened: end the watch thread."""

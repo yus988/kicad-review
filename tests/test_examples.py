@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(ROOT, 'src'))     # run from a clone without ins
 from kicad_review import i18n  # noqa: E402
 from kicad_review import kicad_paths as kp  # noqa: E402
 from kicad_review import kireview as kr  # noqa: E402
+from kicad_review import kireview_board as kb  # noqa: E402
 from kicad_review import renumber_review as rr  # noqa: E402
 
 EX = os.path.join(ROOT, 'examples')
@@ -113,6 +114,31 @@ class ExampleTest(unittest.TestCase):
             self.assertEqual(f.read(4), b'glTF')
         self.assertEqual(self.app.board.model3d()['state'], 'ready')      # asked again: the same model, no export
         self.assertEqual(sorted(os.listdir(proj)), before)
+
+    def test_board_3d_prepared(self):
+        """A board left unchanged for SETTLE_S gets its 3D model without being asked; --no-3d-prepare: not."""
+        old = kb.SETTLE_S
+        kb.SETTLE_S = 0
+        self.addCleanup(setattr, kb, 'SETTLE_S', old)
+        pcb = os.path.join(EX, 'blinky_v2', 'blinky_v2.kicad_pcb')
+        boards = {}
+        for prep in (True, False):
+            data = tempfile.mkdtemp()
+            self.addCleanup(shutil.rmtree, data, True)
+            app = kr.App(data, BIN, 0, prepare_3d=prep)
+            app.open_board(pcb)
+            self.addCleanup(app.board.stop)
+            boards[prep] = app.board
+        b = boards[True]
+        h = b.meta['hash']
+        for _ in range(1200):
+            if kb.read_3d(b.dir(h), h):
+                break
+            time.sleep(0.1)
+        self.assertEqual(kb.read_3d(b.dir(h), h)['state'], 'ready')
+        n = boards[False]
+        self.assertIsNone(kb.read_3d(n.dir(n.meta['hash']), n.meta['hash']))
+        self.assertEqual(n.x3d, {})
 
     def test_board_export(self):
         b = self.app.open_board(os.path.join(EX, 'blinky_v2', 'blinky_v2.kicad_pcb'))

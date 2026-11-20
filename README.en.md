@@ -11,8 +11,9 @@ Review KiCad schematics and boards **together with a coding agent** (Claude Code
 - **Board review** (`/board`): items the agent leaves after routing or reviewing a board (what it changed, what a
   person should fix in KiCad, questions) are marked on the board in KiCad's colours, layer by layer, with severity,
   owner and the pins they point at. Click the board to ask about any spot. `2D | 3D` turns to the board with the
-  parts' 3D models (exported once per board version with `kicad-cli pcb export glb`), to check the parts' shapes
-  without opening KiCad; it lists the parts drawn without a model.
+  parts' 3D models, to check the parts' shapes without opening KiCad; it lists the parts drawn without a model. The
+  server exports the model in the background with `kicad-cli pcb export glb` once the board has stayed unchanged for
+  30 s (`--no-3d-prepare`: only when 3D is shown).
 - Every item has a status (✔ fixed / ⚑ please fix / ✓ OK) and a comment thread. When you write, the agent that is
   waiting wakes up and its reply appears in place.
 
@@ -86,7 +87,7 @@ kicad-review put --file examples/review/board-items.json
 
 ```
 kicad-review [A [B]] [BOARD.kicad_pcb] [--data DIR] [--port 8199] [--no-open] [--kicad-bin DIR]
-             [--rationale FILE] [--no-diff] [--lang en|ja]
+             [--rationale FILE] [--no-diff] [--lang en|ja] [--no-3d-prepare]
 ```
 
 - **A / B**: a KiCad project folder, a root `.kicad_sch`, or `<repo>@<ref>:<path in the repo>` (a tag, branch, commit
@@ -136,8 +137,8 @@ otherwise confirm.
 - Changes that do not reach the netlist (text, graphics, label positions) are not listed; use the overlay view.
 - Designs annotated differently show many "removed + added" parts.
 - Board layers are drawn with the colours at export time; zone fills are as saved.
-- The 3D view needs WebGL2 and STEP / IGES models; its export can take a minute or more for a large board, and runs
-  again after a save while 3D is shown.
+- The 3D view needs WebGL2 and STEP / IGES models; its export can take a minute or more for a large board (in the
+  background, at a lower priority).
 
 ## Development
 

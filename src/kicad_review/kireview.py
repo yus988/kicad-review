@@ -69,8 +69,9 @@ class App:
     """What the server holds: the review stores (talkpage's Talk), the board and the schematic under review. lang
     ('en' / 'ja') is the language of the pages and of the server's text (i18n, set here once)."""
 
-    def __init__(self, data, kicad_bin, port, seed=None, lang='en'):
+    def __init__(self, data, kicad_bin, port, seed=None, lang='en', prepare_3d=True):
         self.data, self.kicad_bin, self.port = data, kicad_bin, port
+        self.prepare_3d = prepare_3d     # the board's 3D model made in the background (kb.Board)
         self.lang = lang if lang in i18n.LANGS else 'en'
         i18n.set_lang(self.lang)
         self.talk = tp.Talk(None, port, self.lang)
@@ -107,7 +108,7 @@ class App:
         if not path.endswith('.kicad_pcb') or not os.path.isfile(path):
             raise ValueError('not a .kicad_pcb file: %s' % path)
         with self.open_lock:
-            b = kb.Board(path, self.data, self.kicad_bin)
+            b = kb.Board(path, self.data, self.kicad_bin, self.prepare_3d)
             b.load()                        # the export: a few seconds for a new version of the file
             s = self.store('board', b.stem)
             with self.cond:
@@ -502,7 +503,7 @@ def serve(args):
             seed = json.load(f)
     restart = os.environ.get(CHILD_ENV) == 'restart'
     app = App(data, args.kicad_bin, args.port, None if restart else seed,
-              args.lang or tp.default_lang('KICAD_REVIEW_LANG'))
+              args.lang or tp.default_lang('KICAD_REVIEW_LANG'), prepare_3d=not args.no_3d_prepare)
     Handler.app = app
     try:
         srv = tp.Server(('127.0.0.1', args.port), Handler)
@@ -692,6 +693,9 @@ def main():
     p.add_argument('--no-diff', action='store_true', help='two schematics: only put them side by side (saved in the review)')
     p.add_argument('--lang', choices=i18n.LANGS,
                    help='language of the pages (default: $KICAD_REVIEW_LANG, else ja for a Japanese OS, else en)')
+    p.add_argument('--no-3d-prepare', action='store_true',
+                   help="do not export the board's 3D model in the background after a save (the 3D view then exports "
+                        'it when shown)')
     p.add_argument('--no-reload', action='store_true',
                    help='one process: do not start the server again when its Python files change')
     args = p.parse_args()
