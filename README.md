@@ -119,7 +119,7 @@ kicad-review C:/proj/board/board.kicad_pcb --data ...
 - 上端の行: 基板の名前とファイル、書き出しの状態、「基板を選ぶ」（パスか、親フォルダのプロジェクトの一覧から）、再読み込み
 - 一覧は重要度（必須 → 推奨 → 任意 → 情報）ごと
 - 図: 背景は黒、層の絵を KiCad の色で重ねる（裏も表から見た向き）。`表` / `裏` / `内層` / `全部` と層ごとのチェック。**ベタ**（既定で入）: ゾーンの塗りを、その銅箔層の下に薄く出す（配線・パッドは塗りの上に読める）。**外形**（既定で入）: 表と裏の両方の部品の外形（F.Courtyard・B.Courtyard）を、どの表示（表・裏・内層・全部）でも出す（片方だけ外すときは層のチェックで）。**ピン・ネット**: 表示している面のパッドに番号とネット名（拡大すると出る）。ホイールで拡大、ドラッグで移動、`全体` で基板全体（もう一度押すと元の拡大）
-- **3D**: 図の上の `2D｜3D` で切り替える。部品の 3D モデルを載せた基板を回して見られる（KiCad を開かずに、部品の形・向き・高さを確かめる）。初めて 3D にしたとき、その版を kicad-cli で書き出す（大きい基板では 1 分ほど。`cache/` に残るので、同じ版はすぐ出る）。ドラッグで回転、右ドラッグか Shift＋ドラッグで移動、ホイールでマウスの下の点を中心に拡大。`上` / `下`（KiCad の裏面と同じく左右が反転）/ `斜め` で向きだけを変える。`部品` を外すと基板だけ（銅箔・レジスト・シルク）。部品に乗せると番号・値・面を出し、クリックで 2D と同じ「ここに質問」。項目を選ぶとその場所へ寄り、項目の部品を状態の色で塗り、印とピンの矢印をその面に描く（見ている面の裏の印は破線）。**モデルなし n**: 3D モデル無しで描いた部品（ファイルが見つからないもの、フットプリントにモデルの指定が無いもの）の一覧。押すとその部品へ寄る
+- **3D**: 図の上の `2D｜3D` で切り替える。部品の 3D モデルを載せた基板を回して見られる（KiCad を開かずに、部品の形・向き・高さを確かめる）。初めて 3D にしたとき、その版を kicad-cli で書き出す（大きい基板では 1 分以上かかることがある。`cache/` に残るので、同じ版はすぐ出る）。ドラッグで回転、右ドラッグか Shift＋ドラッグで移動、ホイールでマウスの下の点を中心に拡大。`上` / `下`（下から見るので左右が反転）/ `斜め` で向きだけを変える。`部品` を外すと基板だけ（銅箔・レジスト・シルク）。部品に乗せると番号・値・面を出し、クリックで 2D と同じ「ここに質問」。項目を選ぶとその場所へ寄り、項目の部品を状態の色で塗り、印とピンの矢印をその面に描く（見ている面の裏の印は破線）。**モデルなし n**: 3D モデル無しで描いた部品（ファイルが見つからないもの、フットプリントにモデルの指定が無いもの）の一覧。押すとその部品へ寄る
 - 項目の印: 輪（`r`）か四角（`w`・`h`）と番号。色は状態（未確認 = 黄、⚑ 直して = 橙、？ 質問 = 赤紫、✔ 修正済み = 緑で中を薄く塗る、✓ OK = 細い灰）。表示している銅箔層に無い項目は破線。項目を選ぶとその面に切り替えて寄せ、`pins` はパッドを囲んで部品の外側から矢印、`spots` は丸と矢印で示す
 - 印の無い所を押すと、近くのパッド（1.5 mm 以内）か部品を出し、「ここに質問」から質問できる（新しい項目 `Q1`, `Q2`, …）
 - **回路図で見る**: 詳細の部品のリンクから、回路図のページのその部品へ移る（回路図を開いているとき）。`/board#ref=U1` の形で開くと、その部品を囲んで寄せる
@@ -211,7 +211,8 @@ talkpage の状態のファイルと同じ形（`{"page", "rev", "items": {<id>:
 - `POST /api/board/item` `{"id": "B3", "title": "…", "severity": "should", "owner": "human", "sides": ["B"], "x": 99.0, "y": 117.8, "r": 1.5, "pins": ["U1.3"], "ask": "…"}`: 項目の作成・置き換え（状態・やりとりは残る。`status` は渡したときだけ変える）
 - `DELETE /api/board/item?id=B3`: 項目の削除
 - `POST /api/board/new` `{x, y, side, comment}`: ページが使う（基板の点についての質問）
-- `GET /board/svg/<版>/<svg|fill>/<ファイル>`、`GET /figures/<基板名 か slug>/<ファイル>`
+- `POST /api/board/3d` `{retry?}`: 今の版の 3D モデルの状態 `{version, state, url, missing, error}`。`state` は `ready` / `exporting` / `stale`（書き出しの間に保存された）/ `error`。初めて聞かれたときに書き出しを始め、ページは `ready` まで聞き直す。`retry` で失敗の後に書き出し直す。`missing` は kicad-cli が足せなかったモデル（`{ref, file}` か `{ref, why}`）
+- `GET /board/svg/<版>/<svg|fill>/<ファイル>`、`GET /board/3d/<版>/board.glb`、`GET /figures/<基板名 か slug>/<ファイル>`
 
 回路図:
 
@@ -227,7 +228,7 @@ talkpage の状態のファイルと同じ形（`{"page", "rev", "items": {<id>:
 
 **基板**: 基板と `.kicad_pro` を `cache/board/` にコピーし、KiCad 同梱の python で `kireview_dump.py`（外形、銅箔層、部品、パッドの JSON）を実行する。`kicad-cli pcb export svg --mode-multi --page-size-mode 1 --exclude-drawing-sheet --drill-shape-opt 2` で、全銅箔層と F/B.Silkscreen・Edge.Cuts・F/B.Courtyard を 1 層 1 枚の SVG にする。銅箔層はゾーンの塗りを除いたもの（配線・パッド・ビアが読みやすい）と、保存されたままの塗りありのもの（「ベタ」）の 2 通り。色は KiCad の基板エディタの配色、背景は透明。各 SVG のページを基板の外形の周り 2 mm に切り詰める。`--page-size-mode 1` の SVG は viewBox の単位が mm で、原点が基板の座標の原点と同じ（KiCad 10 で確認）なので、画面では「画面の px = 基板の mm × 倍率 + ずらし」の 1 つの変換を全部の層と印に使う。
 
-**3D**: 3D を初めて開いたとき（版ごとに 1 度）、基板と `.kicad_pro` を `cache/board/<名前>/<hash>/3d/` にコピーし、プロジェクトのフォルダを作業フォルダにして `kicad-cli pcb export glb --subst-models --include-tracks --include-pads --include-zones --include-silkscreen --include-soldermask -D KIPRJMOD=<プロジェクトのフォルダ>` を実行する（`${KIPRJMOD}` やプロジェクトからの相対パスで書いたモデルも見つかる）。出力を `board.glb`、kicad-cli が足せなかったモデル（「Could not add 3D model for …」の行）を `3d.json` に置く。GLB は m 単位で Y が上、部品のノードの名前が部品番号。ページは GLB を WebGL2 で描き（ライブラリは使わない）、基板の x mm を X、y mm を Z に対応させる。
+**3D**: 3D を初めて開いたとき（版ごとに 1 度）、基板と `.kicad_pro` を `cache/3d-tmp/` にコピーし、プロジェクトのフォルダを作業フォルダにして `kicad-cli pcb export glb --subst-models --include-tracks --include-pads --include-zones --include-silkscreen --include-soldermask -D KIPRJMOD=<プロジェクトのフォルダ>` を実行する（`${KIPRJMOD}` やプロジェクトからの相対パスで書いたモデルも見つかる）。出力を版のフォルダ（`cache/board/<名前>/<hash>/`）の `board.glb`、kicad-cli が足せなかったモデル（「Could not add 3D model for …」の行）を `3d.json` に置く。書き出しは一度に 1 本で、その間に保存された版は最新のものだけを次に書き出す。GLB は m 単位で Y が上、部品のノードの名前が部品番号。ページは GLB を WebGL2 で描き（ライブラリは使わない）、基板の x mm を X、y mm を Z に対応させる。
 
 **回路図**: 各側を `cache/sch/` にコピーし（フォルダはルートから辿れる `.kicad_sch` と `.kicad_pro`・`*-lib-table`、git は `git archive`）、`kicad-cli sch export svg` でシートごとの SVG、`kicad-cli sch export netlist --format kicadxml` でネットリストを書き出す。部品の位置は、回路図に埋め込まれたシンボルの図形とピンから計算する。
 
@@ -249,11 +250,12 @@ talkpage の状態のファイルと同じ形（`{"page", "rev", "items": {<id>:
 | `kireview.py` | 入口: HTTP サーバー（talkpage の Handler に review の経路を足したもの）とコマンド（`wait` `reply` `ack` `show` `put` `group`） |
 | `kireview_store.py` | レビューのファイル（talkpage の Store）、状態と欄、古い形式の変換、基板の項目の確認、まとめ |
 | `kireview_sch.py` | 回路図: 側の書き出し（フォルダ・git）、ネットリストと図の位置、比較、項目、プロジェクトと版の一覧 |
-| `kireview_board.py` | 基板: 書き出し（コピー・塗りの除去・SVG・dump）、ファイルの見張り、近いパッドの検索 |
+| `kireview_board.py` | 基板: 書き出し（コピー・塗りの除去・SVG・dump）、3D モデル（GLB）の書き出し、ファイルの見張り、近いパッドの検索 |
 | `kireview_dump.py` | KiCad 同梱の python で実行し、`pcbnew` で基板のコピーを読んで JSON を書く |
 | `i18n.js`, `i18n.py` | 画面の文（英語・日本語）と、サーバーが作る文 |
 | `review.js`, `review.css` | 両方のページに共通の部品（一覧・詳細・状態のボタン・コメント欄・やりとり・待ち受けの表示・タブ） |
 | `sch.html`, `board.html` | ページ |
+| `board3d.js` | 基板のページの 3D: GLB を読み、WebGL2 で描く（回転・移動・拡大、部品の拾い上げ・色付け・非表示） |
 | `renumber_review.py` | 番号の付け直しを回路図のレビューに移す（`kicad-review renumber`） |
 | `kicad_paths.py` | KiCad のプログラム（kicad-cli、pcbnew の入った python、eeschema）の場所 |
 

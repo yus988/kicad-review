@@ -8,7 +8,7 @@ const Board3D = (() => {
   const TURN = 0.008;                   // radians per px of a drag
   const ZOOM = 1.0015;                  // per wheel delta
   const ALPHA_OPAQUE = 0.85;            // a see-through material this solid or more is drawn opaque (the silkscreen, 0.9)
-  // views: [yaw, pitch]. From below, the board turns over left to right, as KiCad shows the back
+  // views: [yaw, pitch]. From below, the board turns over about the screen's vertical (left and right swap)
   const VIEWS = { top: [0, Math.PI / 2], bottom: [Math.PI, -Math.PI / 2], iso: [-0.45, 0.7] };
   const HOVER = 1, SEL = 2, HL = 3;     // a part's state, per part in a texture
 
@@ -170,7 +170,8 @@ void main() {
   vP = aPos; vN = aNrm; vC = aCol;
   gl_Position = (aPart != 0u && !uParts) ? vec4(0.0, 0.0, 2.0, 1.0) : uVP * vec4(aPos, 1.0);
 }`;
-  // light from the eye, and a little more on faces turned up; colours are linear, written as sRGB
+  // light from the eye, and a little more on faces turned up; colours are linear, written as sRGB (premultiplied by
+// their alpha in the see-through pass)
   const FS = `#version 300 es
 precision highp float;
 in vec3 vP; in vec3 vN; in vec4 vC;
@@ -337,7 +338,7 @@ void main() {
         gl.uniform1i(draw.u.uBlend, 0);
         batches([model.gpu[0]]);
         gl.enable(gl.BLEND);           // the soldermask and other see-through parts, over what is drawn
-        gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);   // colours premultiplied
         gl.depthMask(false);
         gl.uniform1i(draw.u.uBlend, 1);
         batches([model.gpu[1]]);

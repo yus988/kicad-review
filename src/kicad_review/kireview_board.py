@@ -157,7 +157,10 @@ def export(board, data, kicad_bin):
     old = sorted((os.path.getmtime(os.path.join(base, n, 'meta.json')) if os.path.isfile(os.path.join(base, n, 'meta.json')) else 0, n)
                  for n in os.listdir(base) if n != h and os.path.isdir(os.path.join(base, n)))
     for _, n in old[:max(0, len(old) - (CACHE_KEEP - 1))]:
-        _rmtree(os.path.join(base, n))
+        try:
+            _rmtree(os.path.join(base, n))
+        except OSError:     # a file of it is open (its 3D model being sent): the next export removes it
+            pass
     return meta
 
 
@@ -175,34 +178,39 @@ def missing_models(log):
     return out
 
 
-def export_3d(board, d, kicad_bin, h):
+def export_3d(board, data, d, kicad_bin, h):
     """The board with its parts' 3D models as one GLB, <d>/board.glb (d: the export folder of version h), and what
-    could not be added (<d>/3d.json). kicad-cli reads a copy made in <d>/3d/ (the project folder is only read), run
-    in the project folder with KIPRJMOD set to it, so models given by ${KIPRJMOD} or by a path relative to the project
-    are found. Returns the state for Board.model3d; 'stale' when the board was saved again since version h."""
+    could not be added (<d>/3d.json). kicad-cli reads a copy made in <data>/cache/3d-tmp/ (the project folder is only
+    read; the copy is outside the export folders, which a newer export may remove meanwhile), run in the project
+    folder with KIPRJMOD set to it, so models given by ${KIPRJMOD} or by a path relative to the project are found.
+    Returns the state for Board.model3d; 'stale' when the board was saved again since version h."""
     with open(board, 'rb') as f:
         raw = f.read()
     if hashlib.sha1(raw).hexdigest()[:12] != h:
         return {'state': 'stale'}
     stem = os.path.splitext(os.path.basename(board))[0]
-    tmp = os.path.join(d, '3d')
+    tmp = os.path.join(data, 'cache', '3d-tmp', '%s-%s' % (stem, h))
     if os.path.isdir(tmp):
         _rmtree(tmp)
     os.makedirs(tmp)
-    copy = os.path.join(tmp, stem + '.kicad_pcb')
-    with open(copy, 'wb') as f:
-        f.write(raw)
-    pro = os.path.splitext(board)[0] + '.kicad_pro'
-    if os.path.isfile(pro):
-        shutil.copy2(pro, os.path.join(tmp, stem + '.kicad_pro'))
-    proj = os.path.dirname(os.path.abspath(board))
-    out = os.path.join(tmp, 'board.glb')
-    log = run([kp.cli(kicad_bin), 'pcb', 'export', 'glb', *GLB_OPTS, '-D', 'KIPRJMOD=' + proj, '-f', '-o', out, copy],
-              proj)
-    os.replace(out, os.path.join(d, 'board.glb'))
-    with open(os.path.join(d, '3d.json'), 'w', encoding='utf-8') as f:
-        json.dump({'missing': missing_models(log), 'time': time.time()}, f, ensure_ascii=False)
-    _rmtree(tmp)
+    try:
+        copy = os.path.join(tmp, stem + '.kicad_pcb')
+        with open(copy, 'wb') as f:
+            f.write(raw)
+        pro = os.path.splitext(board)[0] + '.kicad_pro'
+        if os.path.isfile(pro):
+            shutil.copy2(pro, os.path.join(tmp, stem + '.kicad_pro'))
+        proj = os.path.dirname(os.path.abspath(board))
+        out = os.path.join(tmp, 'board.glb')
+        log = run([kp.cli(kicad_bin), 'pcb', 'export', 'glb', *GLB_OPTS, '-D', 'KIPRJMOD=' + proj, '-f', '-o', out,
+                   copy], proj)
+        if not os.path.isfile(os.path.join(d, 'meta.json')):
+            return {'state': 'stale'}               # a newer export removed this version's folder meanwhile
+        os.replace(out, os.path.join(d, 'board.glb'))
+        with open(os.path.join(d, '3d.json'), 'w', encoding='utf-8') as f:
+            json.dump({'missing': missing_models(log), 'time': time.time()}, f, ensure_ascii=False)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     return read_3d(d, h)
 
 
@@ -363,7 +371,7 @@ class Board:
                     self.busy3d = False
                     return
             try:
-                st = export_3d(self.path, self.dir(h), self.kicad_bin, h)
+                st = export_3d(self.path, self.data, self.dir(h), self.kicad_bin, h)
             except Exception as e:  # kicad-cli failed, or the folder went with the cache: the page shows it
                 st = {'state': 'error', 'error': str(e)}
             with self.lock:

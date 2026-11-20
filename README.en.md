@@ -136,8 +136,8 @@ otherwise confirm.
 - Changes that do not reach the netlist (text, graphics, label positions) are not listed; use the overlay view.
 - Designs annotated differently show many "removed + added" parts.
 - Board layers are drawn with the colours at export time; zone fills are as saved.
-- The 3D view needs WebGL2 and STEP / IGES models; its export takes a minute or more for a large board, and runs again
-  after a save while 3D is shown.
+- The 3D view needs WebGL2 and STEP / IGES models; its export can take a minute or more for a large board, and runs
+  again after a save while 3D is shown.
 
 ## Development
 
