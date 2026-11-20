@@ -42,7 +42,8 @@ tp = ks.tp
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = 8199
 PAGES = {'/sch': 'sch.html', '/board': 'board.html', '/datasheet': 'datasheet.html'}
-STATIC = {'/i18n.js': 'text/javascript', '/review.js': 'text/javascript', '/review.css': 'text/css'}
+STATIC = {'/i18n.js': 'text/javascript', '/review.js': 'text/javascript', '/board3d.js': 'text/javascript',
+          '/review.css': 'text/css'}
 FIGURE_TYPES = {'.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg'}
 TALK_CMDS = ('wait', 'reply', 'ack', 'show')
 NAME = re.compile(r'^[\w.@+-]+$')     # review names (board stems, schematic slugs) and figure files
@@ -219,6 +220,10 @@ class App:
             parts = path.split('/')                          # /board/svg/<hash>/<svg|fill>/<file>
             p = self.board.svg_path(parts[3], parts[4], parts[5]) if self.board and len(parts) == 6 else None
             return self._file(p, 'image/svg+xml', True)     # the URL carries the content hash
+        if path.startswith('/board/3d/'):
+            parts = path.split('/')                          # /board/3d/<hash>/board.glb
+            p = self.board.glb_path(parts[3]) if self.board and len(parts) == 5 and parts[4] == 'board.glb' else None
+            return self._file(p, 'model/gltf-binary', True)
         if path.startswith('/figures/'):                     # <data>/figures/<review name>/<file>
             parts = [urllib.parse.unquote(x) for x in path.split('/')]
             ok = len(parts) == 4 and NAME.match(parts[2]) and NAME.match(parts[3])
@@ -291,6 +296,8 @@ class App:
             if path == '/api/board/reload':
                 self.board.wake.set()
                 return 200, {'status': 'reloading'}
+            if path == '/api/board/3d':                       # the 3D view's model: its state, made when first asked
+                return 200, self.board.model3d(bool(body.get('retry')))
             with self.cond:
                 if path == '/api/board/item':
                     out = ks.put_board_item(self.board_store, body)

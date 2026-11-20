@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
@@ -93,6 +94,25 @@ class ExampleTest(unittest.TestCase):
         st = self.app.open_sch(os.path.join(EX, 'blinky_v2'), None)                  # one design: every part
         self.assertEqual(sorted(it['key'] for it in st['items']),
                          ['comp:C1', 'comp:D1', 'comp:D2', 'comp:J1', 'comp:R1', 'comp:R2'])
+
+    def test_board_3d(self):
+        """The 3D view's model: exported when first asked, in the cache; the project folder is only read."""
+        proj = os.path.join(EX, 'blinky_v2')
+        before = sorted(os.listdir(proj))
+        self.app.open_board(os.path.join(proj, 'blinky_v2.kicad_pcb'))
+        st = self.app.board.model3d()
+        for _ in range(1200):
+            if st['state'] != 'exporting':
+                break
+            time.sleep(0.1)
+            st = self.app.board.model3d()
+        self.assertEqual(st['state'], 'ready', st)
+        self.assertEqual(st['missing'], [])
+        self.assertEqual(st['url'], '/board/3d/%s/board.glb' % st['version'])
+        with open(self.app.board.glb_path(st['version']), 'rb') as f:
+            self.assertEqual(f.read(4), b'glTF')
+        self.assertEqual(self.app.board.model3d()['state'], 'ready')      # asked again: the same model, no export
+        self.assertEqual(sorted(os.listdir(proj)), before)
 
     def test_board_export(self):
         b = self.app.open_board(os.path.join(EX, 'blinky_v2', 'blinky_v2.kicad_pcb'))

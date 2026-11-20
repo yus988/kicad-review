@@ -44,6 +44,39 @@ header .file { color: var(--muted); font-size: 12px; overflow: hidden; text-over
 #pop input { font: inherit; flex: 1; min-width: 16em; padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; }
 #noBoard { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #aaa; font-size: 15px; }
 #noBoard[hidden] { display: none; }
+
+/* 2D | 3D, and the tools of each: the 2D ones (.t2) or the 3D ones (.t3) */
+#dim button { width: 3.4em; }
+#tools.d3 .t2, #tools:not(.d3) .t3 { display: none; }
+#views3d { display: flex; gap: 4px; }
+#views3d button { width: 4em; padding: 3px 0; }
+#noModel { width: 9.5em; }
+#noModel.none { visibility: hidden; }
+#hover3d { color: var(--muted); font-size: 12px; width: 18em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-variant-numeric: tabular-nums; }
+#msg3d { color: var(--muted); font-size: 12px; flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the 3D view: the canvas under the markers (#ov), on a light ground so black parts show */
+#gl { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab;
+  background: linear-gradient(#d3d8df, #7b8490); }
+#gl.drag { cursor: grabbing; }
+#gl[hidden] { display: none; }
+#view.d3 #layers { display: none; }
+#view.d3 { cursor: default; }
+#state3d { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; gap: 8px; align-items: center;
+  justify-content: center; pointer-events: none; }
+#state3d[hidden] { display: none; }
+#state3d .msg { background: var(--panel); border-radius: 6px; padding: 8px 14px; box-shadow: 0 2px 10px rgba(0,0,0,.3); max-width: 80%; }
+#state3d button { pointer-events: auto; }
+/* the parts without a 3D model */
+#nmBox { position: absolute; right: 8px; top: 8px; z-index: 4; width: 30em; max-width: calc(100% - 16px); max-height: 70%; overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px 8px; box-shadow: 0 4px 16px rgba(0,0,0,.35);
+  font-size: 12px; }
+#nmBox[hidden] { display: none; }
+#nmBox h4 { margin: 6px 0 4px; font-size: 12px; }
+#nmBox .nm { display: flex; gap: 6px; align-items: baseline; margin-bottom: 2px; }
+#nmBox .nm span { color: var(--muted); overflow-wrap: anywhere; }
+#nmBox button { padding: 0 6px; min-width: 3.6em; }
+#nmBox .chips { display: flex; flex-wrap: wrap; gap: 3px; }
 </style>
 </head>
 <body>
@@ -68,17 +101,27 @@ header .file { color: var(--muted); font-size: 12px; overflow: hidden; text-over
 <div id="dockL" class="dock"></div><div class="dsplit" data-dock="L"></div>
 <main id="center">
   <div id="tools">
-    <div id="presets"><button data-p="F" data-i18n="board.F">Front</button><button data-p="B" data-i18n="board.B">Back</button><button data-p="In" data-i18n="board.In">Inner</button><button data-p="all" data-i18n="board.all">All</button></div>
-    <div id="layerBoxes"></div>
-    <label class="opt" data-i18n-title="board.pads.title"><input type="checkbox" id="padText"><span data-i18n="board.pads">Pins / nets</span></label>
-    <label class="opt" data-i18n-title="board.fills.title"><input type="checkbox" id="fillBox"><span data-i18n="board.fills">Fills</span></label>
-    <label class="opt" data-i18n-title="board.court.title"><input type="checkbox" id="courtBox"><span data-i18n="board.court">Courtyards</span></label>
-    <button id="fit" data-i18n="board.fit" data-i18n-title="board.fit.title">Whole</button>
-    <span id="coord"></span>
+    <span class="seg" id="dim"><button id="dim2" data-i18n-title="board.dim2.title">2D</button><button id="dim3" data-i18n-title="board.dim3.title">3D</button></span>
+    <div id="presets" class="t2"><button data-p="F" data-i18n="board.F">Front</button><button data-p="B" data-i18n="board.B">Back</button><button data-p="In" data-i18n="board.In">Inner</button><button data-p="all" data-i18n="board.all">All</button></div>
+    <div id="layerBoxes" class="t2"></div>
+    <label class="opt t2" data-i18n-title="board.pads.title"><input type="checkbox" id="padText"><span data-i18n="board.pads">Pins / nets</span></label>
+    <label class="opt t2" data-i18n-title="board.fills.title"><input type="checkbox" id="fillBox"><span data-i18n="board.fills">Fills</span></label>
+    <label class="opt t2" data-i18n-title="board.court.title"><input type="checkbox" id="courtBox"><span data-i18n="board.court">Courtyards</span></label>
+    <button id="fit" class="t2" data-i18n="board.fit" data-i18n-title="board.fit.title">Whole</button>
+    <span id="coord" class="t2"></span>
+    <div id="views3d" class="t3" data-i18n-title="board3d.views.title"><button data-v="top" data-i18n="board3d.top">Top</button><button data-v="bottom" data-i18n="board3d.bottom">Bottom</button><button data-v="iso" data-i18n="board3d.iso">Angled</button></div>
+    <label class="opt t3" data-i18n-title="board3d.parts.title"><input type="checkbox" id="parts3d"><span data-i18n="board3d.parts">Parts</span></label>
+    <button id="fit3d" class="t3" data-i18n="board.fit" data-i18n-title="board3d.fit.title">Whole</button>
+    <button id="noModel" class="t3 none" data-i18n-title="board3d.nomodel.title"></button>
+    <span id="hover3d" class="t3"></span>
+    <span id="msg3d" class="t3"></span>
   </div>
   <div id="view">
     <div id="layers"></div>
+    <canvas id="gl" hidden></canvas>
     <svg id="ov" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="state3d" hidden></div>
+    <div id="nmBox" hidden></div>
     <div id="pop" hidden></div>
     <div id="noBoard" hidden data-i18n="board.none">No board open (open one with "Choose board")</div>
   </div>
@@ -101,6 +144,7 @@ header .file { color: var(--muted); font-size: 12px; overflow: hidden; text-over
 </div>
 <script src="/i18n.js"></script>
 <script src="/review.js"></script>
+<script src="/board3d.js"></script>
 <script>
 'use strict';
 // ------------------------------------------------------------ constants and helpers
@@ -313,7 +357,7 @@ const toMM = (px, py) => [(px - S.view.tx) / S.view.s, (py - S.view.ty) / S.view
 function initPanZoom() {
   let drag = null;
   view.addEventListener('wheel', e => {
-    if (!S.board) return;
+    if (!S.board || D3.on) return;
     e.preventDefault();
     const r = view.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
     const [x, y] = toMM(px, py);
@@ -323,12 +367,12 @@ function initPanZoom() {
     redraw();
   }, { passive: false });
   view.addEventListener('pointerdown', e => {
-    if (!S.board || e.button !== 0 || e.target.closest('#pop')) return;
+    if (!S.board || D3.on || e.button !== 0 || e.target.closest('#pop')) return;
     drag = { x: e.clientX, y: e.clientY, tx: S.view.tx, ty: S.view.ty, moved: false };
     view.setPointerCapture(e.pointerId);
   });
   view.addEventListener('pointermove', e => {
-    if (!S.board) return;
+    if (!S.board || D3.on) return;
     const r = view.getBoundingClientRect(), [x, y] = toMM(e.clientX - r.left, e.clientY - r.top);
     $('coord').textContent = 'x ' + x.toFixed(2) + '  y ' + y.toFixed(2) + ' mm';
     if (!drag) return;
@@ -402,6 +446,7 @@ const placed = it => typeof it.x === 'number' && typeof it.y === 'number';
 function drawOverlay() {
   const ov = $('ov');
   if (!S.board) { ov.innerHTML = ''; return; }
+  if (D3.on) { drawOverlay3d(); return; }
   const vis = new Set(S.layers.vis);
   const parts = [padLabels(vis)];
   const ids = Object.keys(S.items).filter(id => placed(S.items[id])).sort((a, b) => (a === S.sel) - (b === S.sel) || byId(a, b));
@@ -561,9 +606,9 @@ function boardClick(e) {
   showPop(px, py, x, y);
 }
 
-function showPop(px, py, x, y) {
-  const pop = $('pop'), side = S.layers.active;
-  const what = whatIsAt(x, y, side);
+// what: the description when the caller knows it (a part clicked in 3D); else what is at (x, y) on that side
+function showPop(px, py, x, y, side = S.layers.active, what = whatIsAt(x, y, side)) {
+  const pop = $('pop');
   pop.innerHTML = '<div class="what">' + esc(what || t('board.nopart')) + '</div>' +
     '<div class="xy">x ' + x.toFixed(2) + '  y ' + y.toFixed(2) + ' mm' + esc(t('paren', { x: sideName(side) })) + '</div>' +
     '<div class="ask"><button id="askBtn">' + esc(t('board.ask')) + '</button></div>';
@@ -691,15 +736,15 @@ function select(id, move) {
     else if (side === 'F' || side === 'B') setPreset(side);
     else if (copperKeys().includes(side)) setPreset('In', side);
     const spots = it.spots || [];
+    let fx = it.x, fy = it.y, span = Math.max(FOCUS_MM, (it.w || 0) * 1.5, (it.h || 0) * 1.5, (it.r || 0) * 4);
     if (pads.length || spots.length) { // pins or spots given: frame them, closer than an area
       const xs = [...pads.flatMap(([, p]) => padPoly(p).map(q => q[0])), ...spots.map(s => s.x)];
       const ys = [...pads.flatMap(([, p]) => padPoly(p).map(q => q[1])), ...spots.map(s => s.y)];
       const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-      focusOn((x0 + x1) / 2, (y0 + y1) / 2, Math.max(PIN_FOCUS_MM, (x1 - x0) * 1.6, (y1 - y0) * 1.6));
-    } else {
-      const span = Math.max(FOCUS_MM, (it.w || 0) * 1.5, (it.h || 0) * 1.5, (it.r || 0) * 4);
-      focusOn(it.x, it.y, span);
+      fx = (x0 + x1) / 2; fy = (y0 + y1) / 2; span = Math.max(PIN_FOCUS_MM, (x1 - x0) * 1.6, (y1 - y0) * 1.6);
     }
+    focusOn(fx, fy, span);
+    if (D3.on && D3.eng && D3.eng.ok && D3.eng.loaded()) D3.eng.focus(fx, fy, side, span * 1.3);
   }
   renderAll();
   const row = document.querySelector('#list .item.sel');
@@ -717,8 +762,18 @@ function gotoRef(ref) {
   clearWhole();
   setPreset(f.side === 'B' ? 'B' : 'F');
   const b = f.bbox, cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2;
-  focusOn(cx, cy, Math.max(PIN_FOCUS_MM, (b[2] - b[0]) * 2.5, (b[3] - b[1]) * 2.5));
-  S.hl = { ref, bbox: b };
+  const span = Math.max(PIN_FOCUS_MM, (b[2] - b[0]) * 2.5, (b[3] - b[1]) * 2.5);
+  focusOn(cx, cy, span);
+  S.hl = { ref, bbox: b, side: f.side === 'B' ? 'B' : 'F' };
+  if (D3.on) {                         // the 3D view: there, framed in the same way, the popup at the part
+    const e = D3.eng;
+    if (!e || !e.ok || !e.loaded()) { drawOverlay(); return; }
+    e.focus(cx, cy, S.hl.side, span * 1.3);
+    drawOverlay();
+    const p = e.project(cx, cy, S.hl.side);
+    if (p) showPop(p[0], p[1], cx, cy, S.hl.side);
+    return;
+  }
   drawOverlay();
   showPop(cx * S.view.s + S.view.tx, cy * S.view.s + S.view.ty, cx, cy);
 }
@@ -763,6 +818,8 @@ async function applyBoard(b) {
   }
   await loadLayerImages();
   showBoardStatus(b.status, b.error);
+  $('gl').hidden = !D3.on;
+  if (D3.on) open3d(false);
   if (!conn) conn = Review.connect(b.review.page, onTalk);
   else conn.setPage(b.review.page);
   renderAll();
@@ -771,6 +828,8 @@ async function applyBoard(b) {
 function noBoard(d) {
   S.board = null;
   $('noBoard').hidden = false;
+  $('gl').hidden = true;
+  $('state3d').hidden = true;
   renderAll();
   openPicker(d.hint);
 }
@@ -846,6 +905,292 @@ async function openBoard(btn) {
   }
 }
 
+// ------------------------------------------------------------ 3D: the board with the parts' 3D models (board3d.js)
+// the model is exported by kicad-cli when 3D is first shown for a board version (POST /api/board/3d, asked again until
+// it is ready); the review markers are drawn over it, projected onto the side they are on
+const D3 = {
+  on: store.get('kireview.board.dim') === '3',
+  partsOn: store.get('kireview.board.parts3d') !== '0',
+  eng: null,                   // the Board3D view, made when 3D is first shown
+  ver: null, page: null,       // the board version and review whose model is shown
+  missing: [],                 // [{ref, file | why}]: the models kicad-cli could not add
+  parts: new Set(),            // the refs drawn with a model
+  timer: null,
+  shown: [],                   // the markers on screen, for clicks: [{id, g}]
+  marks: '',                   // what the view was last told to tint
+  camTimer: null,
+};
+const CAM_KEY = 'kireview.board.cam3d';      // the 3D camera per review, kept across a reload
+
+function setDim(on) {
+  D3.on = on;
+  store.set('kireview.board.dim', on ? '3' : '2');
+  $('dim2').classList.toggle('on', !on);
+  $('dim3').classList.toggle('on', on);
+  $('tools').classList.toggle('d3', on);
+  view.classList.toggle('d3', on);
+  $('gl').hidden = !on || !S.board;
+  hidePop();
+  if (!on) { $('nmBox').hidden = true; $('state3d').hidden = true; }
+  else open3d(false);
+  drawOverlay();
+}
+
+function open3d(retry) {
+  if (!D3.on || !S.board) return;
+  if (!D3.eng) {
+    D3.eng = Board3D.create($('gl'), { onView: drawOverlay, onHover: hover3d, onClick: click3d });
+    if (D3.eng.ok) D3.eng.showParts(D3.partsOn);
+  }
+  if (!D3.eng.ok) { state3d(t('board3d.nogl') + (D3.eng.error ? t('paren', { x: D3.eng.error }) : '')); return; }
+  ask3d(retry);
+}
+
+// a message over the view while there is no model yet (with a button to try again after a failure); with a model
+// shown, progress goes to the tools row
+function state3d(msg, failed) {
+  const loaded = D3.eng && D3.eng.ok && D3.eng.loaded(), box = $('state3d');
+  const big = !!msg && (!loaded || failed);
+  $('msg3d').textContent = big ? '' : msg;
+  $('msg3d').title = big ? '' : msg;
+  box.hidden = !big;
+  box.innerHTML = big ? '<div class="msg">' + esc(msg) + '</div>' + (failed ? '<button id="retry3d">' + esc(t('board3d.retry')) + '</button>' : '') : '';
+  if (big && failed) $('retry3d').onclick = () => { state3d(''); open3d(true); };
+}
+
+async function ask3d(retry) {
+  clearTimeout(D3.timer);
+  if (!D3.on || !S.board || !D3.eng || !D3.eng.ok) return;
+  const want = S.board.version, pg = page();
+  let r;
+  try { r = await api('/api/board/3d', retry ? { retry: true } : {}); }
+  catch (err) { state3d(t('board3d.failed', { msg: err.message }), true); return; }
+  if (!D3.on || !S.board || S.board.version !== want) return;     // turned off, or another version came meanwhile
+  if (r.state === 'error') { state3d(t('board3d.failed', { msg: r.error || '' }), true); return; }
+  if (r.state !== 'ready' || r.version !== want) {                 // exporting, or the board was saved again
+    state3d(t(D3.ver && D3.page === pg ? 'board3d.updating' : 'board3d.exporting'));
+    D3.timer = setTimeout(() => ask3d(false), 1500);
+    return;
+  }
+  if (r.version === D3.ver && D3.page === pg) { state3d(''); return; }
+  state3d(t('board3d.loading'));
+  try {
+    const res = await fetch(r.url);
+    if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+    const buf = await res.arrayBuffer();
+    if (!D3.on || !S.board || S.board.version !== want) return;
+    const another = D3.page !== pg;
+    D3.parts = new Set(D3.eng.load(buf));
+    D3.ver = r.version;
+    D3.page = pg;
+    D3.missing = r.missing || [];
+    D3.marks = '';
+    if (another && !D3.eng.setCamera(readCam())) D3.eng.fit();
+    renderNoModel();
+    state3d('');
+    drawOverlay();
+  } catch (err) { state3d(t('board3d.failed', { msg: err.message }), true); }
+}
+
+function readCam() {
+  try { return (JSON.parse(store.get(CAM_KEY) || '{}') || {})[page()] || null; } catch (_) { return null; }
+}
+function saveCamSoon() {
+  clearTimeout(D3.camTimer);
+  D3.camTimer = setTimeout(() => {
+    if (!D3.eng || !D3.eng.ok || !D3.eng.loaded() || D3.page !== page()) return;
+    let all = {};
+    try { all = JSON.parse(store.get(CAM_KEY) || '{}') || {}; } catch (_) {}
+    all[page()] = D3.eng.camera();
+    store.set(CAM_KEY, JSON.stringify(all));
+  }, 500);
+}
+
+// the parts drawn without a model: the files kicad-cli did not find, then the footprints that name none
+function renderNoModel() {
+  const fps = S.board ? S.board.dump.footprints : [], nf = new Map(D3.missing.map(m => [m.ref, m]));
+  const unset = fps.map(f => f.ref).filter(r => !D3.parts.has(r) && !nf.has(r)).sort(byId);
+  const found = [...nf.values()].sort((a, b) => byId(a.ref, b.ref));
+  const n = found.length + unset.length, btn = $('noModel'), box = $('nmBox');
+  btn.textContent = t('board3d.nomodel', { n });
+  btn.classList.toggle('none', !n);
+  const refBtn = r => '<button data-ref="' + esc(r) + '">' + esc(r) + '</button>';
+  box.innerHTML = (found.length ? '<h4>' + esc(t('board3d.notfound')) + ' ' + found.length + '</h4>' +
+    found.map(m => '<div class="nm">' + refBtn(m.ref) + '<span>' + esc(m.file || m.why || '') + '</span></div>').join('') : '') +
+    (unset.length ? '<h4>' + esc(t('board3d.unset')) + ' ' + unset.length + '</h4><div class="chips">' + unset.map(refBtn).join('') + '</div>' : '');
+  if (!n) box.hidden = true;
+}
+
+// the parts the view tints: the selected item's (its refs and the parts of its pins), and a part shown from a link
+function marks3d() {
+  const e = D3.eng;
+  if (!e || !e.ok) return;
+  const it = S.sel && S.items[S.sel];
+  const refs = it ? [...new Set([...(it.refs || []), ...(it.pins || [])].map(r => r.replace(/\.[^.]+$/, '')))] : [];
+  const col = ST_COLOR[it ? stOf(it) : ''] || ST_COLOR[''], hl = S.hl ? S.hl.ref : null;
+  const key = JSON.stringify([refs, col, hl]);
+  if (key === D3.marks) return;
+  D3.marks = key;
+  e.setMarks({ sel: refs, selColor: col, hl, hlColor: HL_COLOR });
+}
+
+function hover3d(hit) {
+  let s = '';
+  if (hit && hit.ref) {
+    const f = S.board && S.board.dump.footprints.find(q => q.ref === hit.ref);
+    s = f ? f.ref + ' (' + f.value + ') ' + sideName(f.side) : hit.ref;
+  } else if (hit) s = 'x ' + hit.x.toFixed(2) + '  y ' + hit.y.toFixed(2) + ' mm';
+  $('hover3d').textContent = s;
+}
+
+// a click on the 3D view: a marker selects its item; elsewhere the popup to ask about the spot (on a part: that part,
+// or its pad when one is that close)
+function click3d(px, py) {
+  if (S.hl) { S.hl = null; drawOverlay(); }
+  const id = hitItem3d(px, py);
+  if (id) { hidePop(); select(id, true); return; }
+  const hit = D3.eng.pick(px, py);
+  if (!hit) { hidePop(); return; }
+  const f = hit.ref && S.board.dump.footprints.find(q => q.ref === hit.ref);
+  if (f) {
+    const side = f.side === 'B' ? 'B' : 'F', at = whatIsAt(hit.x, hit.y, side);
+    showPop(px, py, hit.x, hit.y, side, at.startsWith(f.ref + ' ') ? at : f.ref + ' (' + f.value + ') ' + sideName(f.side));
+    return;
+  }
+  showPop(px, py, hit.x, hit.y, D3.eng.side());
+}
+
+// a marker in the 3D view: a box item's corners, or a ring, projected onto its side
+function markerGeom3d(it, side) {
+  const e = D3.eng, c = e.project(it.x, it.y, side);
+  if (!c) return null;
+  if (it.w != null && it.h != null) {
+    let pts = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => e.project(it.x + sx * it.w / 2, it.y + sy * it.h / 2, side));
+    if (pts.some(p => !p)) return null;
+    const ext = Math.max(...pts.map(p => Math.hypot(p[0] - c[0], p[1] - c[1])));
+    if (ext < 8) pts = pts.map(p => [c[0] + (p[0] - c[0]) * 8 / Math.max(ext, 1e-3), c[1] + (p[1] - c[1]) * 8 / Math.max(ext, 1e-3)]);
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    return { box: true, cx: c[0], cy: c[1], pts, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+  }
+  const r = it.r || 1, q = [e.project(it.x + r, it.y, side), e.project(it.x, it.y + r, side)].filter(Boolean);
+  return { box: false, cx: c[0], cy: c[1], r: Math.max(9, ...q.map(p => Math.hypot(p[0] - c[0], p[1] - c[1]))) };
+}
+const ptsAttr = pts => pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+const itemSide = it => (it.sides || ['F'])[0];
+
+function drawOverlay3d() {
+  const ov = $('ov'), e = D3.eng;
+  marks3d();
+  if (!e || !e.ok || !e.loaded()) { ov.innerHTML = ''; D3.shown = []; return; }
+  saveCamSoon();
+  const facing = e.side(), parts = [], shown = [];
+  const ids = Object.keys(S.items).filter(id => placed(S.items[id])).sort((a, b) => (a === S.sel) - (b === S.sel) || byId(a, b));
+  for (const id of ids) {
+    const it = S.items[id], g = markerGeom3d(it, itemSide(it));
+    if (!g) continue;
+    const col = ST_COLOR[stOf(it)] || ST_COLOR[''];
+    const sel = id === S.sel, fixed = stOf(it) === 'fixed', done = DONE.has(stOf(it));
+    const w = sel ? 4 : done && !fixed ? 1.2 : 2.2, op = S.sel && !sel ? 0.4 : 1;
+    const dash = (it.sides || []).includes(facing) ? '' : ' stroke-dasharray="5 4"';   // on the side turned away
+    const fill = fixed && itemArea(it) < BIG_AREA * boardArea() ? ' fill="' + col + '" fill-opacity="0.22"' : ' fill="none"';
+    let shape;
+    if (g.box) {
+      const a = 'points="' + ptsAttr(g.pts) + '"';
+      shape = '<polygon ' + a + ' fill="none" stroke="#000" stroke-width="' + (w + 3) + '"/><polygon ' + a + fill + ' stroke="' + col + '" stroke-width="' + w + '"' + dash + '/>';
+      g.lx = g.x1 + 3; g.ly = g.y0 - 3;
+    } else {
+      const c = 'cx="' + g.cx + '" cy="' + g.cy + '" r="' + g.r + '"';
+      shape = '<circle ' + c + ' fill="none" stroke="#000" stroke-width="' + (w + 3) + '"/><circle ' + c + fill + ' stroke="' + col + '" stroke-width="' + w + '"' + dash + '/>';
+      g.lx = g.cx + g.r * 0.72 + 2; g.ly = g.cy - g.r * 0.72 - 2;
+    }
+    parts.push('<g opacity="' + op + '">' + shape + '<text x="' + g.lx + '" y="' + g.ly + '" fill="' + col + '"' +
+      (sel ? ' style="font-size:15px"' : '') + '>' + esc(id) + (fixed ? ' ✔' : '') + '</text></g>');
+    shown.push({ id, g });
+  }
+  const it = S.sel && S.items[S.sel];
+  if (it && placed(it)) {
+    const col = ST_COLOR[stOf(it)] || ST_COLOR[''];
+    parts.push(pinArrows3d(it, col, facing), spotArrows3d(it, col));
+  }
+  if (S.hl) parts.push(highlight3d());
+  ov.innerHTML = parts.join('');
+  D3.shown = shown;
+}
+
+// the selected item's pins: each pad outlined on its side, an arrow from away from its part's centre
+function pinArrows3d(it, col, facing) {
+  const e = D3.eng, d = S.board.dump, out = [];
+  const fpAt = {};
+  for (const f of d.footprints) fpAt[f.ref] = f;
+  for (const [sp, p] of itemPads(it)) {
+    const side = p.layers.includes(cuLayer(facing)) ? facing : p.layers.includes('F.Cu') ? 'F' : 'B';
+    const pts = padPoly(p).map(q => e.project(q[0], q[1], side)), c = e.project(p.x, p.y, side);
+    if (!c || pts.some(q => !q)) continue;
+    out.push('<polygon points="' + ptsAttr(pts) + '" fill="none" stroke="#000" stroke-width="5"/>' +
+      '<polygon points="' + ptsAttr(pts) + '" fill="none" stroke="' + col + '" stroke-width="2.5"/>');
+    const f = fpAt[p.ref], fc = f && e.project(f.x, f.y, side);
+    let ux = fc ? c[0] - fc[0] : 0, uy = fc ? c[1] - fc[1] : 0;
+    const n = Math.hypot(ux, uy);
+    if (n < 1e-3) { ux = -Math.SQRT1_2; uy = -Math.SQRT1_2; } else { ux /= n; uy /= n; }
+    const rad = Math.max(...pts.map(q => Math.hypot(q[0] - c[0], q[1] - c[1])));
+    out.push(arrowTo(c[0], c[1], ux, uy, rad, col, sp));
+  }
+  return out.join('');
+}
+function spotArrows3d(it, col) {
+  const e = D3.eng, side = itemSide(it), ic = e.project(it.x, it.y, side), out = [];
+  for (const [i, sp] of (it.spots || []).entries()) {
+    const c = e.project(sp.x, sp.y, side), q = e.project(sp.x + (sp.r || 0.4), sp.y, side);
+    if (!c || !q) continue;
+    let ux = ic ? c[0] - ic[0] : 0, uy = ic ? c[1] - ic[1] : 0;
+    const n = Math.hypot(ux, uy);
+    if (n < 1e-3) { ux = -Math.SQRT1_2; uy = -Math.SQRT1_2; } else { ux /= n; uy /= n; }
+    const rad = Math.max(7, Math.hypot(q[0] - c[0], q[1] - c[1]));
+    out.push('<circle cx="' + c[0] + '" cy="' + c[1] + '" r="' + rad + '" fill="none" stroke="#000" stroke-width="5"/>' +
+      '<circle cx="' + c[0] + '" cy="' + c[1] + '" r="' + rad + '" fill="none" stroke="' + col + '" stroke-width="2.5"/>' +
+      arrowTo(c[0], c[1], ux, uy, rad, col, sp.label || String(i + 1)));
+  }
+  return out.join('');
+}
+// a part shown from #ref= or the list of parts without a model: its box, dashed, on its side
+function highlight3d() {
+  const e = D3.eng, b = S.hl.bbox, side = S.hl.side || 'F';
+  const pts = [[b[0], b[1]], [b[2], b[1]], [b[2], b[3]], [b[0], b[3]]].map(q => e.project(q[0], q[1], side));
+  if (pts.some(q => !q)) return '';
+  const a = 'points="' + ptsAttr(pts) + '"', x = Math.min(...pts.map(q => q[0])), y = Math.min(...pts.map(q => q[1]));
+  return '<polygon ' + a + ' fill="none" stroke="#000" stroke-width="6"/><polygon ' + a + ' fill="none" stroke="' + HL_COLOR +
+    '" stroke-width="3" stroke-dasharray="8 5"/><text x="' + x + '" y="' + (y - 5) + '" fill="' + HL_COLOR + '" style="font-size:15px">' + esc(S.hl.ref) + '</text>';
+}
+// the marker under a point of the 3D view (as hitItem in 2D: inside or within 6 px, or on its label)
+function hitItem3d(px, py) {
+  let best = null;
+  for (const { id, g } of D3.shown) {
+    let d = g.box ? Math.max(g.x0 - px, px - g.x1, g.y0 - py, py - g.y1, 0) : Math.max(0, Math.hypot(px - g.cx, py - g.cy) - g.r);
+    if (px >= g.lx - 2 && px <= g.lx + 8 * id.length + 4 && py >= g.ly - 14 && py <= g.ly + 3) d = 0;
+    if (d <= 6 && (!best || d < best[0])) best = [d, id];
+  }
+  return best && best[1];
+}
+
+function init3d() {
+  $('dim2').addEventListener('click', () => { if (D3.on) setDim(false); });
+  $('dim3').addEventListener('click', () => { if (!D3.on) setDim(true); });
+  document.querySelectorAll('#views3d button').forEach(b => b.addEventListener('click', () => { if (D3.eng && D3.eng.ok) D3.eng.view(b.dataset.v); }));
+  $('fit3d').addEventListener('click', () => { if (D3.eng && D3.eng.ok) D3.eng.fit(); });
+  $('parts3d').checked = D3.partsOn;
+  $('parts3d').addEventListener('change', e => {
+    D3.partsOn = e.target.checked;
+    store.set('kireview.board.parts3d', D3.partsOn ? '1' : '0');
+    if (D3.eng && D3.eng.ok) D3.eng.showParts(D3.partsOn);
+  });
+  $('noModel').addEventListener('click', () => { $('nmBox').hidden = !$('nmBox').hidden; });
+  $('nmBox').addEventListener('click', e => { const b = e.target.closest('button[data-ref]'); if (b) gotoRef(b.dataset.ref); });
+  $('dim2').classList.toggle('on', !D3.on);
+  $('dim3').classList.toggle('on', D3.on);
+  $('tools').classList.toggle('d3', D3.on);
+  view.classList.toggle('d3', D3.on);
+}
+
 // ------------------------------------------------------------ layout: panels, keys, buttons
 function initLayout() {
   Review.init('board');
@@ -889,6 +1234,7 @@ function initLayout() {
     if (e.key !== 'Escape') return;
     if (pickerOpen()) { $('picker').hidden = true; return; }
     if (!$('pop').hidden) { hidePop(); return; }
+    if (!$('nmBox').hidden) { $('nmBox').hidden = true; return; }
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) { document.activeElement.blur(); return; }
     if (S.hl) { S.hl = null; drawOverlay(); }
     deselect();
@@ -904,6 +1250,7 @@ function initLayout() {
 async function main() {
   initLayout();
   initPanZoom();
+  init3d();
   renderAll();
   let b;
   try { b = await api('/api/board'); } catch (err) { notice($('bname'), t('load.failed', { msg: err.message })); return; }

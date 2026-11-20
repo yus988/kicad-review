@@ -4,6 +4,8 @@ The board is copied to <data>/cache/board/<stem>/<hash>/ and kicad-cli exports o
 without zone fills (tracks, pads and vias stay readable), and the copper with the fills a second time, drawn faintly
 under it in the page. kireview_dump.py (run with KiCad's python) lists footprints and pads. The project folder is
 only read. When the board file changes (saved in KiCad) the export runs again in the background (Board.watch).
+The 3D view's model (GLB, kicad-cli pcb export glb) is made only when the page asks for it (Board.model3d): it takes
+seconds to tens of seconds, so it is not part of the export above.
 The review items live in kireview_store (reviews/<stem>.json); kireview.py serves the routes.
 """
 import hashlib
@@ -28,6 +30,10 @@ NEAR_PAD_MM = 1.5             # a click this close to a pad names the pad
 WATCH_S = 2.0
 CACHE_KEEP = 2                # current export and the one before
 EXPORT_V = 2                  # cache format: an export of another version is made again
+# the 3D model: the parts' models (STEP in place of VRML of the same name, as KiCad's 3D viewer) on the board with its
+# copper, silkscreen and soldermask
+GLB_OPTS = ('--subst-models', '--include-tracks', '--include-pads', '--include-zones', '--include-silkscreen',
+            '--include-soldermask')
 
 
 # ---------------------------------------------------------------- export
@@ -66,6 +72,7 @@ def run(cmd, cwd):
     if r.returncode:
         raise RuntimeError('%s failed (%d): %s' % (os.path.basename(cmd[0]), r.returncode,
                                                    (r.stderr or r.stdout).decode('utf-8', 'replace')[-800:]))
+    return (r.stdout + b'\n' + r.stderr).decode('utf-8', 'replace')
 
 
 def crop_svg(path, box):
@@ -154,6 +161,63 @@ def export(board, data, kicad_bin):
     return meta
 
 
+def missing_models(log):
+    """The parts whose 3D model kicad-cli could not add, from its output ("Could not add 3D model for J3." and the
+    line after, mostly "File not found: <path>"): [{ref, file}] or [{ref, why}]."""
+    out, lines = [], log.splitlines()
+    for i, ln in enumerate(lines):
+        m = re.match(r'\s*Could not add 3D model for (.+?)\.?\s*$', ln)
+        if not m:
+            continue
+        nxt = lines[i + 1].strip() if i + 1 < len(lines) else ''
+        f = re.match(r'File not found:\s*(.*)$', nxt)
+        out.append({'ref': m.group(1), 'file': f.group(1)} if f else {'ref': m.group(1), 'why': nxt})
+    return out
+
+
+def export_3d(board, d, kicad_bin, h):
+    """The board with its parts' 3D models as one GLB, <d>/board.glb (d: the export folder of version h), and what
+    could not be added (<d>/3d.json). kicad-cli reads a copy made in <d>/3d/ (the project folder is only read), run
+    in the project folder with KIPRJMOD set to it, so models given by ${KIPRJMOD} or by a path relative to the project
+    are found. Returns the state for Board.model3d; 'stale' when the board was saved again since version h."""
+    with open(board, 'rb') as f:
+        raw = f.read()
+    if hashlib.sha1(raw).hexdigest()[:12] != h:
+        return {'state': 'stale'}
+    stem = os.path.splitext(os.path.basename(board))[0]
+    tmp = os.path.join(d, '3d')
+    if os.path.isdir(tmp):
+        _rmtree(tmp)
+    os.makedirs(tmp)
+    copy = os.path.join(tmp, stem + '.kicad_pcb')
+    with open(copy, 'wb') as f:
+        f.write(raw)
+    pro = os.path.splitext(board)[0] + '.kicad_pro'
+    if os.path.isfile(pro):
+        shutil.copy2(pro, os.path.join(tmp, stem + '.kicad_pro'))
+    proj = os.path.dirname(os.path.abspath(board))
+    out = os.path.join(tmp, 'board.glb')
+    log = run([kp.cli(kicad_bin), 'pcb', 'export', 'glb', *GLB_OPTS, '-D', 'KIPRJMOD=' + proj, '-f', '-o', out, copy],
+              proj)
+    os.replace(out, os.path.join(d, 'board.glb'))
+    with open(os.path.join(d, '3d.json'), 'w', encoding='utf-8') as f:
+        json.dump({'missing': missing_models(log), 'time': time.time()}, f, ensure_ascii=False)
+    _rmtree(tmp)
+    return read_3d(d, h)
+
+
+def read_3d(d, h):
+    """The 3D model of export folder d, made before: the state for Board.model3d, or None."""
+    try:
+        with open(os.path.join(d, '3d.json'), encoding='utf-8') as f:
+            info = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not os.path.isfile(os.path.join(d, 'board.glb')):
+        return None
+    return {'state': 'ready', 'url': '/board/3d/%s/board.glb' % h, 'missing': info.get('missing', [])}
+
+
 def _parts_box(dump):
     """Board without an outline: the footprints' extent."""
     bs = [f['bbox'] for f in dump['footprints']] or [[0, 0, 100, 100]]
@@ -208,6 +272,8 @@ class Board:
         self.status, self.error = 'ok', ''
         self.stamp = None
         self.stopped = threading.Event()
+        self.x3d = {}               # export hash -> the state of its 3D model (model3d)
+        self.want3d, self.busy3d = None, False   # the version to export next; one kicad-cli at a time
 
     def _stamp(self):
         st = os.stat(self.path)
@@ -267,6 +333,49 @@ class Board:
                                 'fill': '/board/svg/%s/fill/%s' % (m['hash'], m['fills'][n]) if n in m.get('fills', {}) else None}
                                for n, fn in m['files'].items()],
                     'dump': d}
+
+    def model3d(self, retry=False):
+        """The 3D model of the current export: {version, state: ready | exporting | stale | error, url, missing,
+        error}. The first ask starts kicad-cli in a thread and the page asks again until it is ready. retry: try
+        again after an error. One export runs at a time: saves while one runs leave only the newest version to do
+        next (a large board takes a minute or more)."""
+        with self.lock:
+            h = self.meta['hash']
+            st = self.x3d.get(h)
+            if st and st['state'] in ('error', 'stale') and retry:
+                st = None
+            if st is None:
+                st = read_3d(self.dir(h), h)
+                if st is None:
+                    st = {'state': 'exporting'}
+                    self.want3d = h
+                    if not self.busy3d:
+                        self.busy3d = True
+                        threading.Thread(target=self._work_3d, daemon=True).start()
+                self.x3d[h] = st
+            return dict(st, version=h)
+
+    def _work_3d(self):
+        while True:
+            with self.lock:
+                h, self.want3d = self.want3d, None
+                if h is None:
+                    self.busy3d = False
+                    return
+            try:
+                st = export_3d(self.path, self.dir(h), self.kicad_bin, h)
+            except Exception as e:  # kicad-cli failed, or the folder went with the cache: the page shows it
+                st = {'state': 'error', 'error': str(e)}
+            with self.lock:
+                self.x3d[h] = st
+                keep = (self.meta['hash'], self.want3d)                 # older versions: forget
+                self.x3d = {k: v for k, v in self.x3d.items() if k in keep}
+
+    def glb_path(self, h):
+        if not re.match(r'^[0-9a-f]+$', h):
+            return None
+        p = os.path.join(self.dir(h), 'board.glb')
+        return p if os.path.isfile(p) else None
 
     def svg_path(self, h, sub, name):
         if (not re.match(r'^[0-9a-f]+$', h) or sub not in ('svg', 'fill') or '/' in name or '\\' in name

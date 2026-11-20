@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src')
 sys.path.insert(0, SRC)     # run from a clone without installing
 from kicad_review import kireview as kr  # noqa: E402
+from kicad_review import kireview_board as kb  # noqa: E402
 from kicad_review import kireview_sch as kc  # noqa: E402
 from kicad_review import kireview_store as ks  # noqa: E402
 
@@ -217,6 +218,19 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.req('/api/datasheet-url?u=x', headers={'Origin': None})[0], 403)      # it fetches: our pages only
         self.assertEqual(self.req('/datasheet')[0], 200)
         self.assertEqual(self.req('/api/sch/area', {'sheet': '/', 'side': 'a', 'box': [0, 0, 1, 1], 'comment': 'x'})[0], 400)
+        self.assertEqual(self.req('/api/board/3d', {})[0], 400)                    # no board open
+        self.assertEqual(self.req('/board/3d/abc/board.glb')[0], 404)
+        self.assertEqual(self.req('/board3d.js')[0], 200)
+
+
+class Model3dTest(unittest.TestCase):
+    def test_missing_models(self):
+        """kicad-cli's output on the models it could not add: the file not found, or the reason given."""
+        log = ('Could not add 3D model for J13.\r\nFile not found: ${KICAD10_3DMODEL_DIR}/a b.step\r\n'
+               'Could not add 3D model for U2.\nUnsupported format\nBinary GLTF file \'x.glb\' created.\n')
+        self.assertEqual(kb.missing_models(log), [{'ref': 'J13', 'file': '${KICAD10_3DMODEL_DIR}/a b.step'},
+                                                  {'ref': 'U2', 'why': 'Unsupported format'}])
+        self.assertEqual(kb.missing_models('Export time 0.7 s\n'), [])
 
 
 class AreaTest(unittest.TestCase):

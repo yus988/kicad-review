@@ -10,7 +10,9 @@ Review KiCad schematics and boards **together with a coding agent** (Claude Code
   flipped.
 - **Board review** (`/board`): items the agent leaves after routing or reviewing a board (what it changed, what a
   person should fix in KiCad, questions) are marked on the board in KiCad's colours, layer by layer, with severity,
-  owner and the pins they point at. Click the board to ask about any spot.
+  owner and the pins they point at. Click the board to ask about any spot. `2D | 3D` turns to the board with the
+  parts' 3D models (exported once per board version with `kicad-cli pcb export glb`), to check the parts' shapes
+  without opening KiCad; it lists the parts drawn without a model.
 - Every item has a status (✔ fixed / ⚑ please fix / ✓ OK) and a comment thread. When you write, the agent that is
   waiting wakes up and its reply appears in place.
 
@@ -134,6 +136,8 @@ otherwise confirm.
 - Changes that do not reach the netlist (text, graphics, label positions) are not listed; use the overlay view.
 - Designs annotated differently show many "removed + added" parts.
 - Board layers are drawn with the colours at export time; zone fills are as saved.
+- The 3D view needs WebGL2 and STEP / IGES models; its export takes a minute or more for a large board, and runs again
+  after a save while 3D is shown.
 
 ## Development
 
